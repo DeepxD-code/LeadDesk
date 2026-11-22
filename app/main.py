@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import crypto, interviews, llm, sop, tasks, vault
+from . import crypto, impact, interviews, llm, sop, tasks, vault
 from .auth import current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
@@ -51,6 +51,12 @@ async def startup():
 @app.get("/api/health")
 def health():
     return {"ok": True, "time": now_s(), "time_zone": TZ_NAME}
+
+
+@app.get("/api/impact")
+def impact_numbers(user=Depends(current_user)):
+    """How much work the tool is actually absorbing, counted from the database."""
+    return impact.compute()
 
 
 @app.get("/api/proof")

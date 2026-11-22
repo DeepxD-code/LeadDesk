@@ -181,3 +181,15 @@ code, .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5
 .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .section-title h2 { margin: 0; }
 .score-big { font-size: 44px; font-weight: 800; color: var(--ok); line-height: 1; }
+
+/* judge demo */
+.tour { width: 100%; margin-top: 18px; }
+.demo-step { padding: 18px 20px; }
+.demo-row { display: flex; gap: 16px; align-items: flex-start; }
+.demo-num { flex: 0 0 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff;
+  font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.demo-h { margin: 0 0 6px; font-size: 17px; }
+.demo-why { margin: 0 0 12px; line-height: 1.5; }
+.demo-ans { margin: 8px 0; white-space: pre-wrap; line-height: 1.55; }
+.demo-t td { vertical-align: top; }
+.demo-t td:first-child { width: 110px; }

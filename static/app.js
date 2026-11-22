@@ -96,15 +96,17 @@ const S = { me: null, meta: null, notes: { items: [], unread: 0 }, ai: null, cou
 const NAV = {
   lead: [["Team", [["overview", "📊", "Today's overview"], ["board", "🗂️", "Task board"]]],
          ["Knowledge", [["assistant", "💬", "Ask the SOPs"], ["needs-lead", "🙋", "Needs lead", "needs"], ["sops", "📚", "SOP library"]]],
-         ["Me", [["vault", "🔐", "My documents"], ["proof", "✅", "How we know it works"]]]],
+         ["Me", [["vault", "🔐", "My documents"], ["proof", "✅", "How we know it works"]]],
+         ["", [["demo", "🎬", "Judge demo"]]]],
   member: [["Work", [["my-tasks", "✅", "My tasks"], ["assistant", "💬", "Ask the SOPs"]]],
            ["Me", [["vault", "🔐", "My documents"]]]],
   hr: [["People", [["vault", "🔐", "Document vault"], ["interviews", "🗓️", "Interviews"]]],
-       ["Help", [["assistant", "💬", "Ask the SOPs"], ["proof", "✅", "How we know it works"]]]],
+       ["Help", [["assistant", "💬", "Ask the SOPs"], ["proof", "✅", "How we know it works"]]],
+       ["", [["demo", "🎬", "Judge demo"]]]],
   admin: [["Team", [["overview", "📊", "Today's overview"], ["board", "🗂️", "Task board"]]],
           ["Knowledge", [["assistant", "💬", "Ask the SOPs"], ["needs-lead", "🙋", "Needs lead", "needs"], ["sops", "📚", "SOP library"]]],
           ["People", [["vault", "🔐", "Document vault"], ["audit", "🧾", "Audit log"], ["interviews", "🗓️", "Interviews"]]],
-          ["", [["proof", "✅", "How we know it works"]]]],
+          ["", [["proof", "✅", "How we know it works"], ["demo", "🎬", "Judge demo"]]]],
   interviewer: [["Interviews", [["my-interviews", "🗓️", "My interviews"], ["availability", "🕒", "My availability"]]]],
 };
 const HOME = { lead: "overview", member: "my-tasks", hr: "vault", admin: "overview", interviewer: "my-interviews" };
@@ -132,16 +134,25 @@ async function renderLogin() {
         <label class="f">Password <input class="input" name="password" type="password" autocomplete="current-password" required></label>
         <button class="btn primary big" type="submit">Sign in</button>
       </form>
-      ${users.length ? html`<h3 style="margin-top:28px">Demo: sign in as…</h3>
+      ${users.length ? html`<button class="btn big tour" id="tour">▶ Take the 3-minute demo</button>
+        <p class="muted tiny" id="tourhint" style="margin:6px 0 0">Signs you in as a team lead and walks the whole product, one real action at a time.</p>
+        <h3 style="margin-top:24px">Demo: sign in as…</h3>
         <div class="persona">${users.map((u) => html`<button data-u="${u.username}"><b>${u.name}</b><span class="muted small">${u.role_label}${u.department && u.role === "hr" ? " · " + u.department : ""}${u.shift ? " · " + u.shift + " shift" : ""}</span></button>`)}</div>` : ""}
     </div>
   </div>`;
-  const go = async (username, pw) => {
-    try { const r = await api("/api/auth/login", { method: "POST", body: { username, password: pw } }); S.me = r.user; boot(); }
+  const go = async (username, pw, target) => {
+    try {
+      const r = await api("/api/auth/login", { method: "POST", body: { username, password: pw } });
+      S.me = r.user;
+      await boot();
+      if (target) location.hash = target;
+    }
     catch (e) { fail(e); }
   };
   $("#lf").onsubmit = (e) => { e.preventDefault(); const f = new FormData(e.target); go(f.get("username"), f.get("password")); };
   $$(".persona button").forEach((b) => (b.onclick = () => go(b.dataset.u, password)));
+  const tour = $("#tour");
+  if (tour) tour.onclick = () => { tour.disabled = true; $("#tourhint").textContent = "Signing in…"; go("lead", password, "#/demo"); };
 }
 
 // ------------------------------------------------------------------ shell
@@ -985,6 +996,148 @@ function evalBox(ev) {
     <table class="t"><tbody>${ev.rows.map((r) => html`<tr><td>${r.passed ? "✅" : "❌"}</td><td><b>${r.question}</b><div class="small">${(r.answer || "").slice(0, 200)}</div>
       <div class="muted tiny">${r.sources.join(" · ") || (r.got === "needs_lead" ? "→ sent to the Needs-lead list" : "")}</div></td><td class="small muted num">${r.seconds}s</td></tr>`)}</tbody></table>`;
 }
+
+// ------------------------------------------------------------------ judge demo
+// One page, real actions, in the order that tells the story. Every button calls
+// the same API the product uses - nothing here is staged for the demo.
+const DEMO_STEPS = [
+  {
+    id: "numbers", icon: "📊", go: "overview",
+    title: "The whole shift on one screen",
+    why: "Today a lead hands out work over chat and a spreadsheet, so nobody can see the total load and the same two people get everything. These figures are counted from the database on every page load, not typed into a slide.",
+    cta: "Show the numbers",
+    run: async () => {
+      const i = await api("/api/impact");
+      return html`<table class="t demo-t"><tbody>
+        <tr><td class="muted">Team</td><td>${i.board.members} people · ${i.board.tasks} tasks · <b>${i.board.overdue} overdue</b> · ${i.board.due_today} due today</td></tr>
+        <tr><td class="muted">Load</td><td><b>${i.board.overloaded}</b> over the ${i.board.threshold}-task line${i.board.busiest ? html` · busiest is <b>${i.board.busiest.name}</b> with ${i.board.busiest.open} open` : ""}</td></tr>
+        <tr><td class="muted">Assistant</td><td>${i.assistant.asked} questions in ${i.window_days} days · <b>${i.assistant.answer_rate_pct}%</b> answered without a lead · ≈ <b>${i.assistant.hours_saved} hours</b> of lead time</td></tr>
+        <tr><td class="muted">Vault</td><td>${i.vault.documents} encrypted documents · ${i.vault.scans_searchable} scans made searchable · ${i.vault.audit_entries} audit entries</td></tr>
+        <tr><td class="muted">Interviews</td><td>${i.interviews.upcoming} booked (${i.interviews.hours_booked}h) · ${i.interviews.feedback_pending} awaiting feedback</td></tr>
+      </tbody></table>
+      <details class="tiny muted" style="margin-top:8px"><summary>How these are counted, and what is assumed</summary><ul>${i.assumptions.map((a) => html`<li>${a}</li>`)}</ul></details>`;
+    },
+  },
+  {
+    id: "answer", icon: "💬", go: "assistant",
+    title: "A question answered from the SOP, with its source",
+    why: "The assistant answers only from your SOP documents, and always shows the section it used. No source, no answer.",
+    cta: "Ask: what do I do when error 402 appears?",
+    run: async () => demoAnswer(await api("/api/sop/ask", { method: "POST", body: { question: "What do I do when error 402 appears?" } })),
+  },
+  {
+    id: "honest", icon: "🙋", go: "needs-lead",
+    title: "It admits what it does not know",
+    why: "The failure that kills trust in an assistant is a confident wrong answer. If no SOP section covers the question, it refuses and puts the question in the lead's queue — which is also your to-do list for writing the missing SOP.",
+    cta: "Ask something the SOPs do not cover",
+    run: async () => {
+      const r = await api("/api/sop/ask", { method: "POST", body: { question: "What is the office Wi-Fi password?" } });
+      return html`${demoAnswer(r)}<p class="tiny muted">Open <a href="#/needs-lead">Needs lead</a> — it is sitting there now.</p>`;
+    },
+  },
+  {
+    id: "hindi", icon: "🌐", go: "assistant",
+    title: "Hindi and Gujarati, with no model installed",
+    why: "The SOPs are English; the floor is not. A hand-written domain lexicon maps the words people actually use and passes numbers and error codes straight through, so this works on a machine with nothing downloaded. A local model, when present, only improves the phrasing.",
+    cta: "Ask in Hindi",
+    run: async () => {
+      const r = await api("/api/sop/ask", { method: "POST", body: { question: "त्रुटि 402 आने पर मुझे क्या करना चाहिए?" } });
+      return html`${demoAnswer(r)}${r.understood && r.understood.length ? html`<p class="tiny muted">Understood as: ${r.english} <span class="muted">(${r.understood.map((u) => u[0] + " → " + u[1]).join(", ")})</span></p>` : ""}`;
+    },
+  },
+  {
+    id: "vault", icon: "🔐", go: "vault", role: ["admin"],
+    title: "The vault is encrypted on disk, not just in the docs",
+    why: "HR files are the most sensitive thing in the building. Each file is AES-256-GCM with its own key, wrapped by a master key kept outside the database and the code. This button reads the stored file and shows you the bytes.",
+    cta: "Show me the ciphertext",
+    run: async () => {
+      const docs = await api("/api/vault/docs");
+      const list = docs.docs || docs;
+      if (!list.length) return html`<div class="empty">No documents to show.</div>`;
+      const p = await api(`/api/vault/storage/${list[0].id}`);
+      return html`<div style="margin-top:10px"><b>${list[0].title}</b>
+        <div class="hex">${p.disk_head_hex}</div>
+        <div class="hex" style="margin-top:4px">${p.disk_head_text}</div>
+        <div class="alert ok" style="margin-top:8px">${p.stored_bytes} bytes on disk · entropy ${p.entropy_bits_per_byte} bits/byte (8.0 is perfectly random) · ${Math.round(p.printable_ratio * 100)}% printable · integrity ${p.sha256_matches ? "✔ matches" : "✖ mismatch"}<br><span class="tiny">${p.cipher} · master key fingerprint <code>${p.key_fingerprint}</code></span></div></div>`;
+    },
+  },
+  {
+    id: "race", icon: "⚡", go: "interviews", role: ["hr", "admin"],
+    title: "Two candidates, one slot, one booking",
+    why: "The failure mode of every booking page is the double booking. Two real concurrent requests are fired at the same slot through separate threads; the database transaction and a unique index let exactly one through.",
+    cta: "Fire both bookings at once",
+    run: async () => {
+      const r = await api("/api/iv/demo/race", { method: "POST" });
+      return html`<div class="alert ${r.bookings_made === 1 ? "ok" : "bad"}" style="margin-top:10px">
+        <b>${r.bookings_made === 1 ? "✔ Only one booking was made." : "✖ Double booking!"}</b><br>
+        ${r.results.map((x) => html`${x.who}: ${x.ok ? "booked" : "refused — " + x.message}<br>`)}
+        <span class="tiny">Slot ${r.slot}. The test booking was removed afterwards.</span></div>`;
+    },
+  },
+  {
+    id: "eval", icon: "✅", go: "proof", role: ["lead", "admin"],
+    title: "The claim, measured",
+    why: "Ten questions with known correct answers: five answerable, three that must be refused, two in Hindi and Gujarati. This is the same script that runs in the test suite, so the number cannot quietly drift.",
+    cta: "Run all ten questions",
+    run: async () => {
+      const ev = await api("/api/sop/eval", { method: "POST" });
+      return html`<div style="margin-top:10px">
+        <div class="row" style="gap:28px;margin-bottom:8px">
+          <div><div class="score-big">${ev.answerable_passed}/${ev.answerable_total}</div><div class="muted small">answered with source</div></div>
+          <div><div class="score-big">${ev.gaps_caught}/${ev.gaps_total}</div><div class="muted small">refused correctly</div></div>
+          <div><div class="score-big" style="color:var(--accent)">${ev.multilingual_passed}/${ev.multilingual_total}</div><div class="muted small">Hindi / Gujarati</div></div>
+        </div>
+        <div class="tiny muted">Model ${ev.model} · run ${fmtDT(ev.at)}</div></div>`;
+    },
+  },
+];
+
+function demoAnswer(r) {
+  const ok = r.status === "answered";
+  const src = (r.sources || [])[0];
+  return html`<div class="alert ${ok ? "ok" : ""}" style="margin-top:10px;${ok ? "" : "border-color:var(--warn,#c98)"}">
+    <b>${ok ? "Answered" : "Refused and sent to the lead"}</b>
+    <span class="tiny muted">${r.mode ? " · " + r.mode : ""}${r.top_score != null ? " · match " + r.top_score : ""}</span>
+    <div class="demo-ans">${r.answer || r.reason}</div>
+    ${src ? html`<div class="tiny">📄 <b>${src.doc}</b> › ${src.section}</div>` : ""}
+  </div>`;
+}
+
+VIEWS.demo = async (el) => {
+  const steps = DEMO_STEPS.filter((s) => !s.role || s.role.includes(S.me.role));
+  const hidden = DEMO_STEPS.length - steps.length;
+  el.innerHTML = html`
+  <div class="page-head"><div class="grow"><h1>Judge demo</h1>
+    <p>${steps.length} steps, about three minutes. Every button runs the real thing against the real database — nothing on this page is staged.</p></div></div>
+  <div class="stack">
+    ${steps.map((s, i) => html`<div class="card demo-step">
+      <div class="demo-row">
+        <div class="demo-num">${i + 1}</div>
+        <div class="grow">
+          <h2 class="demo-h">${s.icon} ${s.title}</h2>
+          <p class="small muted demo-why">${s.why}</p>
+          <div class="row">
+            <button class="btn primary" data-run="${s.id}">${s.cta}</button>
+            ${s.go ? html`<a class="btn" href="#/${s.go}">Open the page →</a>` : ""}
+          </div>
+          <div data-out="${s.id}"></div>
+        </div>
+      </div></div>`)}
+    <div class="card"><p class="muted small" style="margin:0">Signed in as <b>${S.me.name}</b> (${S.me.role_label}).
+      ${hidden ? html`${hidden} step${hidden === 1 ? "" : "s"} appear for other roles — use the person switcher at the top right.` : ""}
+      The full written case is in <code>docs/HACKATHON_PLAYBOOK.md</code>.</p></div>
+  </div>`;
+  $$("[data-run]").forEach((b) => (b.onclick = async () => {
+    const step = DEMO_STEPS.find((x) => x.id === b.dataset.run);
+    const out = $(`[data-out="${step.id}"]`);
+    const label = b.textContent;
+    b.disabled = true; b.textContent = "Running…";
+    out.innerHTML = `<div class="empty"><span class="typing"><span></span><span></span><span></span></span> Working…</div>`;
+    try { out.innerHTML = html`${await step.run()}`.s; }
+    catch (e) { out.innerHTML = html`<div class="alert bad">${e.message}</div>`.s; }
+    b.disabled = false; b.textContent = label;
+  }));
+};
 
 // ------------------------------------------------------------------ start
 boot();

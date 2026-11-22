@@ -1,5 +1,6 @@
 """Demo data: one team of 20 on two shifts, 3 task types, 3 SOPs, 300 employees + 10 HR documents,
 5 interviewers / 10 candidates. All fictional. Demo password for every account: see README (DEMO_PASSWORD)."""
+import json
 import logging
 import os
 import random
@@ -144,13 +145,61 @@ def seed_sops():
         dst = os.path.join(SOP_DIR, f"seed_{f}")
         shutil.copy(os.path.join(src, f), dst)
         ingest_file(dst, f, lead)
-    # A few past questions so the Needs-lead list is not empty on first look.
+    # A week of real-looking question history, so the impact numbers are counts over
+    # data rather than a slide. Mix: most answered from the SOPs, some escalated,
+    # a few later resolved by the lead.
     m = {r["username"]: r["id"] for r in q("SELECT id, username FROM users WHERE role='member'")}
-    t = now() - timedelta(hours=3)
-    for user, text in [("m05", "Can I work from home on Saturday if the queue is empty?"),
-                       ("m12", "What do I do when error 615 appears on the payment screen?")]:
-        ex("""INSERT INTO questions(user_id, asked_at, question, language, status, top_score, mode, sources)
-              VALUES (?,?,?,?,?,?,?,?)""", (m[user], t.isoformat(timespec="seconds"), text, "en", "needs_lead", 0.05, "gate", "[]"))
+    rnd = random.Random(23)
+    answered_pool = [
+        ("What do I do when error 402 appears?", "Error Code Guide", "Error 402 - Payment authorisation declined (mandate limit exceeded)", 0.47),
+        ("Who approves a refund above 10000?", "Claims and Payments SOP", "3. Refunds / 3.1 Refund approval limits", 0.43),
+        ("Which form is used for a duplicate payment?", "Claims and Payments SOP", "4. Duplicate payments", 0.39),
+        ("What is the cut-off time for daily reconciliation?", "Data Entry and Reconciliation SOP", "4. Daily reconciliation", 0.42),
+        ("A claim document is missing a signature. What should I do?", "Claims and Payments SOP", "2. Claims intake", 0.40),
+        ("When should I place a payment on hold?", "Claims and Payments SOP", "5. Payment holds", 0.31),
+        ("What documents do I check for a new vendor?", "Data Entry and Reconciliation SOP", "6. Document checking", 0.36),
+        ("What do I do when error 409 appears?", "Error Code Guide", "Error 409 - Duplicate record", 0.44),
+    ]
+    gap_pool = [
+        "Can I work from home on Saturday if the queue is empty?",
+        "Who signs off overtime for the evening shift?",
+        "Is there a dress code for client visits?",
+        "How many casual leaves do I get in a year?",
+        "What is the office Wi-Fi password?",
+        "Can I swap my shift with a colleague?",
+    ]
+    n = 0
+    now_dt = now()
+    with tx():
+        for day in range(7):
+            base = now_dt - timedelta(days=day)
+            for _ in range(rnd.randint(7, 12)):
+                who = m[f"m{rnd.randint(1, 20):02d}"]
+                at = base.replace(hour=rnd.randint(8, 21), minute=rnd.randint(0, 59),
+                                  second=rnd.randint(0, 59)).isoformat(timespec="seconds")
+                roll = rnd.random()
+                if roll < 0.72:      # answered from the SOPs
+                    text, doc, section, score = rnd.choice(answered_pool)
+                    mode = "llm" if rnd.random() < 0.55 else "extractive"
+                    status = "resolved" if rnd.random() < 0.06 else "answered"
+                    ex("""INSERT INTO questions(user_id, asked_at, question, language, answer, sources, status,
+                          top_score, mode, lead_answer, resolved_at, helpful)
+                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       (who, at, text, "en", f"From the SOP - {section}: see the section text.",
+                        json.dumps([{"doc": doc, "section": section}]), status, score, mode,
+                        "Confirmed - also added to the SOP." if status == "resolved" else None,
+                        at if status == "resolved" else None, 1 if rnd.random() < 0.8 else 0))
+                else:                # escalated to the lead, which is the SOP gap list
+                    text = rnd.choice(gap_pool)
+                    status = "resolved" if rnd.random() < 0.25 else "needs_lead"
+                    ex("""INSERT INTO questions(user_id, asked_at, question, language, status, top_score, mode,
+                          sources, lead_answer, resolved_by, resolved_at)
+                          VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                       (who, at, text, "en", status, round(rnd.uniform(0.01, 0.09), 3), "gate", "[]",
+                        "Ask the shift supervisor." if status == "resolved" else None,
+                        lead if status == "resolved" else None, at if status == "resolved" else None))
+                n += 1
+    log.info("Seeded %d questions of history", n)
 
 
 def seed_vault():
