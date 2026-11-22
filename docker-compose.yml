@@ -1,0 +1,37 @@
+# One command: docker compose up --build
+#   app      http://localhost:8000      LeadDesk itself
+#   mailpit  http://localhost:8025      every invite, reminder and cancellation lands here
+#   ollama   http://localhost:11434     the local model (on the host, not in a container)
+services:
+  app:
+    build: .
+    container_name: leaddesk-app
+    ports:
+      - "8000:8000"
+    environment:
+      # The AI endpoint: Ollama runs on the host, so the container reaches it here.
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SEED_DEMO: "1"
+      DEMO_MODE: "1"
+      DATA_DIR: /app/data
+      VAULT_MASTER_KEY_FILE: /app/secrets/vault_master.key
+      VAULT_AUTOCREATE_KEY: "1"
+    volumes:
+      - ./data:/app/data          # database + encrypted blobs
+      - ./secrets:/app/secrets    # vault master key — keep this out of git
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets Linux hosts resolve the Ollama URL too
+    depends_on:
+      - mailpit
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: leaddesk-mail
+    ports:
+      - "8025:8025"   # web inbox for the demo
+      - "1025:1025"   # SMTP
+    restart: unless-stopped

@@ -1,0 +1,12 @@
+[
+  {"q": "What do I do when error 402 appears?", "expect": "answer", "must": ["402", "hold"], "source": "Error Code Guide"},
+  {"q": "Who approves a refund above ₹10,000?", "expect": "answer", "must": ["Operations Manager"], "source": "Claims and Payments SOP"},
+  {"q": "Which form is used for a duplicate payment?", "expect": "answer", "must": ["DP-07"], "source": "Claims and Payments SOP"},
+  {"q": "What is the cut-off time for daily reconciliation?", "expect": "answer", "must": ["6"], "source": "Data Entry and Reconciliation SOP"},
+  {"q": "A claim document is missing a signature. What should I do?", "expect": "answer", "must": ["MSG-04"], "source": "Claims and Payments SOP"},
+  {"q": "What is the office Wi-Fi password?", "expect": "needs_lead"},
+  {"q": "What do I do when error 777 appears?", "expect": "needs_lead"},
+  {"q": "How many casual leaves do I get in a year?", "expect": "needs_lead"},
+  {"q": "त्रुटि 402 आने पर मुझे क्या करना चाहिए?", "expect": "answer", "must": ["402"], "source": "Error Code Guide", "lang": "hi"},
+  {"q": "₹10,000 થી વધુ રિફંડ કોણ મંજૂર કરે છે?", "expect": "answer", "must": [], "source": "Claims and Payments SOP", "lang": "gu"}
+]

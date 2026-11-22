@@ -1,0 +1,16 @@
+.git
+.gitignore
+data
+secrets
+__pycache__
+*.py[cod]
+.venv
+venv
+.pytest_cache
+.ruff_cache
+docs/*.pdf
+*.log
+.env
+Thumbs.db
+.vscode
+.idea

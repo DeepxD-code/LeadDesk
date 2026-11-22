@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book your interview — LeadDesk</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    body { background: var(--bg); }
+    .book-wrap { max-width: 720px; margin: 0 auto; padding: 32px 18px 64px; }
+    .book-top { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; margin-bottom: 22px; }
+    .book-top .logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #6366f1, #22c55e); display: grid; place-items: center; font-size: 18px; }
+    .who-hi { margin: 0 0 4px; font-size: 22px; }
+    .slot-list { display: flex; flex-direction: column; gap: 18px; }
+    .day-head { font-weight: 700; font-size: 14px; color: #344054; margin-bottom: 8px; }
+    .slot-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+    .slot-btn { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; min-width: 118px; text-align: left; line-height: 1.35; }
+    .slot-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .slot-btn.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .slot-btn:disabled { opacity: .55; cursor: default; }
+    .slot-btn .who2 { display: block; font-weight: 500; font-size: 12px; color: var(--muted); }
+    .slot-btn.sel .who2 { color: #dbe0ff; }
+    .booking-big { font-size: 20px; font-weight: 700; margin: 2px 0 6px; }
+    .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; font-size: 14px; margin: 14px 0; }
+    .kv dt { color: var(--muted); font-weight: 600; }
+    .kv dd { margin: 0; word-break: break-word; }
+    .sticky-act { position: sticky; bottom: 0; background: linear-gradient(to top, var(--bg) 70%, transparent); padding: 16px 0 4px; margin-top: 18px; }
+    .center { text-align: center; }
+    .skeleton { color: var(--muted); padding: 40px 10px; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="book-wrap">
+  <div class="book-top"><span class="logo">🧭</span> LeadDesk</div>
+  <div id="app" class="skeleton">Loading your booking link…</div>
+</div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TOKEN = location.pathname.replace(/\/+$/, "").split("/").pop();
+  var API = "/api/book/" + encodeURIComponent(TOKEN);
+  var state = { data: null, chosen: null, confirm: false, busy: false, showSlots: false };
+  var root = document.getElementById("app");
+
+  var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // All stored times are naive IST wall-clock strings ("2026-11-25T10:00").
+  // Parse the digits directly so the browser never shifts them into another zone.
+  function parse(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(s || "");
+    if (!m) return null;
+    return { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], mi: +m[5] };
+  }
+
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function clock(p) {
+    var h12 = p.h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + pad(p.mi) + (p.h < 12 ? "am" : "pm");
+  }
+
+  function dayKey(p) { return p.y + "-" + pad(p.mo) + "-" + pad(p.d); }
+
+  function dayLabel(p) {
+    var dt = new Date(p.y, p.mo - 1, p.d);
+    return DOW[dt.getDay()] + " " + p.d + " " + MON[p.mo - 1] + " " + p.y;
+  }
+
+  function slotLabel(s) {
+    var a = parse(s.start), b = parse(s.end);
+    if (!a) return esc(s.start);
+    return clock(a) + "–" + (b ? clock(b) : "");
+  }
+
+  function toast(text, kind) {
+    var wrap = document.getElementById("toasts");
+    var el = document.createElement("div");
+    el.className = "alert " + (kind || "ok");
+    el.style.boxShadow = "0 10px 24px rgba(16,24,40,.16)";
+    el.textContent = text;
+    wrap.appendChild(el);
+    setTimeout(function () { el.remove(); }, 5200);
+  }
+
+  function request(method, url, body) {
+    var opt = { method: method, headers: {} };
+    if (body !== undefined) {
+      opt.headers["Content-Type"] = "application/json";
+      opt.body = JSON.stringify(body);
+    }
+    return fetch(url, opt).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) {
+          var msg = (data && (data.detail || data.message)) || ("Request failed (" + r.status + ")");
+          var err = new Error(typeof msg === "string" ? msg : "Request failed");
+          err.status = r.status;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  function load() {
+    return request("GET", API).then(function (d) {
+      state.data = d;
+      state.chosen = null;
+      state.confirm = false;
+      state.showSlots = d.status !== "scheduled";
+      render();
+    }).catch(function (e) {
+      root.className = "";
+      root.innerHTML =
+        '<div class="alert bad"><b>This booking link is not valid.</b><br>' +
+        esc(e.message) + "</div>" +
+        '<p class="small muted" style="margin-top:14px">Please check the link in your invitation email, or reply to your recruiter for a new one.</p>';
+    });
+  }
+
+  function groupSlots(slots) {
+    var groups = [], seen = {};
+    slots.forEach(function (s) {
+      var p = parse(s.start);
+      if (!p) return;
+      var k = dayKey(p);
+      if (!seen[k]) { seen[k] = { key: k, p: p, items: [] }; groups.push(seen[k]); }
+      seen[k].items.push(s);
+    });
+    groups.forEach(function (g) {
+      g.items.sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+    });
+    return groups;
+  }
+
+  function minutesBetween(a, b) {
+    var p = parse(a), q = parse(b);
+    if (!p || !q) return null;
+    var mins = (q.h * 60 + q.mi) - (p.h * 60 + p.mi);
+    if (mins < 0) mins += 24 * 60;
+    return mins || null;
+  }
+
+  function renderBookingCard(d) {
+    var b = d.booking;
+    if (!b) return "";
+    var mins = minutesBetween(b.start, b.end);
+    return '<div class="card stack">' +
+      '<div><span class="pill ok">✔ Booked</span></div>' +
+      '<div class="booking-big">' + esc(b.label) + "</div>" +
+      '<dl class="kv">' +
+        "<dt>Round</dt><dd>" + esc(d.round) + "</dd>" +
+        "<dt>Interviewer</dt><dd>" + esc(b.interviewer || "To be confirmed") + "</dd>" +
+        (mins ? "<dt>Length</dt><dd>" + mins + " minutes</dd>" : "") +
+        "<dt>Location</dt><dd>" + locationHtml(b.location) + "</dd>" +
+        "<dt>Time zone</dt><dd>" + esc(d.time_zone) + "</dd>" +
+      "</dl>" +
+      (b.reschedules ? '<p class="tiny muted">Moved ' + b.reschedules + " time" + (b.reschedules > 1 ? "s" : "") + ". Your calendar invite was updated.</p>" : "") +
+      '<div class="row">' +
+        '<a class="btn primary" href="' + API + '/ics">📎 Add to calendar (.ics)</a>' +
+        (d.past ? "" : '<button class="btn" id="change">Change the time</button>') +
+        (d.past ? "" : '<button class="btn danger" id="cancel">Cancel</button>') +
+      "</div>" +
+      (b.location && /^https?:/.test(b.location) ? '<p class="tiny muted">The joining link is inside the calendar invite and the confirmation email.</p>' : "") +
+    "</div>";
+  }
+
+  function locationHtml(loc) {
+    if (!loc) return '<span class="muted">To be confirmed</span>';
+    if (/^https?:\/\//.test(loc)) {
+      return '<a href="' + esc(loc) + '" target="_blank" rel="noopener noreferrer">' + esc(loc) + "</a>";
+    }
+    return esc(loc);
+  }
+
+  function renderSlots(d) {
+    var groups = groupSlots(d.slots || []);
+    var firstLen = (d.slots && d.slots[0] && d.slots[0].length_min) || null;
+    if (!groups.length) {
+      return '<div class="card"><div class="empty">' +
+        (d.status === "scheduled"
+          ? "No other times are open right now.<br><span class='small'>Ask your recruiter to add more availability.</span>"
+          : "No open times right now.<br><span class='small'>Your recruiter has been notified — please check back shortly or reply to their email.</span>") +
+        "</div></div>";
+    }
+    return '<div class="card stack">' +
+      '<div><h2 style="margin:0;font-size:17px">' +
+        (d.status === "scheduled" ? "Pick a different time" : "Pick a time that suits you") +
+      "</h2><p class='small muted' style='margin:6px 0 0'>Times shown in " + esc(d.time_zone) + ". " +
+        (firstLen ? "Each slot is " + esc(firstLen) + " minutes. " : "") +
+        "Once you choose, the slot is held for you and taken off everyone else's list.</p></div>" +
+      '<div class="slot-list">' +
+        groups.map(function (g) {
+          return '<div><div class="day-head">' + esc(dayLabel(g.p)) + '</div><div class="slot-btns">' +
+            g.items.map(function (s) {
+              var sel = state.chosen === s.id;
+              return '<button class="slot-btn' + (sel ? " sel" : "") + '" data-slot="' + s.id + '"' +
+                (sel ? ' aria-pressed="true"' : '') + ">" +
+                slotLabel(s) + ' <span class="who2">' + esc(s.interviewer) + "</span></button>";
+            }).join("") +
+          "</div></div>";
+        }).join("") +
+      "</div>" +
+      <div class="sticky-act">' +
+        '<button class="btn primary big" id="book" style="width:100%"' + (state.chosen ? "" : " disabled") + ">" +
+          (state.confirm ? "Confirm booking" : "Book this time") +
+        "</button>" +
+        '<p class="tiny muted center" style="margin:8px 0 0">' +
+          (state.chosen ? "Step " + (state.confirm ? "2 of 2 — press Confirm booking" : "1 of 2 — press Book, then confirm") : "Choose a time above to continue") +
+        "</p>" +
+      "</div>" +
+    "</div>";
+  }
+
+  function render() {
+    var d = state.data;
+    root.className = "";
+    if (!d) return;
+
+    var parts = [];
+    parts.push('<div class="card stack" style="margin-bottom:16px">' +
+      '<div><span class="pill accent">' + esc(d.round) + "</span></div>" +
+      '<h1 class="who-hi">Hello ' + esc(d.candidate) + "</h1>" +
+      '<p class="muted" style="margin:0">You are booking a ' + esc(d.round) + " for the <b>" + esc(d.role) + "</b> role.</p>" +
+    "</div>");
+
+    if (d.status === "cancelled") {
+      parts.push('<div class="alert bad"><b>This interview was cancelled.</b><br>If you think that is a mistake, please contact your recruiter — they can send you a fresh link.</div>');
+      root.innerHTML = parts.join("");
+      return;
+    }
+
+    if (d.past) {
+      parts.push('<div class="alert warn"><b>This interview has already taken place.</b><br>Nothing more is needed from you. Contact your recruiter if you are waiting on the outcome.</div>');
+    }
+
+    if (d.booking) parts.push(renderBookingCard(d));
+
+    if (state.showSlots && !d.past) parts.push(renderSlots(d));
+
+    if (d.booking && d.past) {
+      // nothing else to show
+    }
+
+    root.innerHTML = parts.join("");
+    wire();
+  }
+
+  function wire() {
+    Array.prototype.forEach.call(root.querySelectorAll(".slot-btn"), function (btn) {
+      btn.addEventListener("click", function () {
+        if (state.busy) return;
+        var id = Number(btn.getAttribute("data-slot"));
+        if (state.confirm && state.chosen === id) { submit(); return; }
+        state.chosen = id;
+        state.confirm = false;
+        render();
+      });
+    });
+
+    var bookBtn = document.getElementById("book");
+    if (bookBtn) {
+      bookBtn.addEventListener("click", function () {
+        if (state.busy || !state.chosen) return;
+        if (!state.confirm) { state.confirm = true; render(); return; }
+        submit();
+      });
+    }
+
+    var changeBtn = document.getElementById("change");
+    if (changeBtn) {
+      changeBtn.addEventListener("click", function () {
+        state.showSlots = !state.showSlots;
+        state.chosen = null;
+        state.confirm = false;
+        render();
+      });
+    }
+
+    var cancelBtn = document.getElementById("cancel");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", function () {
+        if (state.busy) return;
+        if (!confirm("Cancel this interview?\n\nYour recruiter will be told and you will need a new link to rebook.")) return;
+        state.busy = true;
+        request("POST", API + "/cancel").then(function () {
+          toast("Your interview is cancelled. A cancellation notice was emailed to you and the interviewer.", "ok");
+          return load();
+        }).catch(function (e) {
+          toast(e.message, "bad");
+        }).then(function () { state.busy = false; });
+      });
+    }
+  }
+
+  function submit() {
+    if (state.busy || !state.chosen) return;
+    state.busy = true;
+    setBusyText("Booking…");
+    request("POST", API, { slot_id: state.chosen }).then(function (res) {
+      state.busy = false;
+      toast(
+        (res.rescheduled ? "Time changed to " : "Booked for ") + res.label +
+        ". A calendar invite is on its way to your inbox.",
+        "ok"
+      );
+      return load();
+    }).catch(function (e) {
+      state.busy = false;
+      if (e.status === 409) {
+        toast("Sorry — that time was taken a moment ago. Please pick another.", "warn");
+      } else {
+        toast(e.message, "bad");
+      }
+      state.confirm = false;
+      state.chosen = null;
+      return load();
+    });
+  }
+
+  function setBusyText(text) {
+    var btn = document.getElementById("book");
+    if (btn) { btn.disabled = true; btn.textContent = text; }
+    Array.prototype.forEach.call(root.querySelectorAll(".slot-btn"), function (b) { b.disabled = true; });
+  }
+
+  if (!TOKEN || TOKEN === "book") {
+    root.className = "";
+    root.innerHTML = '<div class="alert warn">This link is incomplete. Please open the booking link exactly as it appears in your invitation email.</div>';
+    return;
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

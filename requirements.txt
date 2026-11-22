@@ -1,0 +1,24 @@
+# Web
+fastapi==0.140.13
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32
+httpx==0.28.1
+pydantic==2.*
+
+# Vault: encryption + key handling
+cryptography==50.0.0
+
+# Documents: read PDF/DOCX, render scans, run OCR
+pypdf==6.14.2
+python-docx==1.2.0
+pypdfium2==5.13.0
+Pillow==12.3.0
+pytesseract==0.3.13
+
+# SOP retrieval (TF-IDF over SOP sections)
+scikit-learn==1.8.0
+numpy==2.5.1
+
+# Exports (workload .xlsx) and generated sample PDFs
+openpyxl==3.1.5
+reportlab==5.0.1
