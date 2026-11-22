@@ -24,6 +24,7 @@ desktop.ini
 .DS_Store
 .vscode/
 .idea/
+.github/skills/design-taste/.git/
 
 # ---- logs ----
 *.log

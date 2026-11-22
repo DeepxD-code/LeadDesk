@@ -58,7 +58,7 @@ automatically on Windows; `apt-get install tesseract-ocr` elsewhere). Everything
 First start seeds a full demo: 300 employees, 20 team members on two shifts, ~60 tasks, 3 SOPs, 10 HR documents
 (4 of them scans), 5 interviewers and 10 candidates.
 
-Every account uses the password **`demo1234`**.
+Every demo account uses the password **`demo1234`** (or the value of `DEMO_PASSWORD`).
 
 | Username | Who | What they can reach |
 |---|---|---|
@@ -67,8 +67,14 @@ Every account uses the password **`demo1234`**.
 | `admin` | Anil Rao, Administrator | all vault documents, audit log, delete approvals |
 | `hr1` … `hr5` | HR, one per department | vault documents for their own department |
 | `int1` … `int5` | interviewers | their availability, their interviews, their feedback forms |
+| `tester` | QA tester | team forum only |
+| `dev` | developer | team forum only |
 
-The login screen lists one account per role, so a reviewer does not have to remember usernames.
+The login screen lists demo accounts by persona. Team members can use `m01` … `m20`; every signed-in role can
+start discussions and reply in the **Team forum**. Tester and developer accounts are restricted to the forum.
+
+These are shared demo credentials, not production user accounts. Set `DEMO_MODE=0` and `SEED_DEMO=0` outside a
+local/demo environment; provision real users with unique passwords before deployment.
 
 ---
 

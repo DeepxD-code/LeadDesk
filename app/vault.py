@@ -112,7 +112,16 @@ def scope_label(user):
         user["role"], f"Your own documents ({user['employee_id'] or 'no employee ID'})")
 
 
-def _get_doc_checked(doc_id, user, action):
+def _retention_expired(doc):
+    if not doc["retention_until"]:
+        return False
+    try:
+        return date.fromisoformat(doc["retention_until"]) < now().date()
+    except (TypeError, ValueError):
+        return True
+
+
+def _get_doc_checked(doc_id, user, action, allow_expired=False):
     doc = q1("SELECT * FROM vault_docs WHERE id=? AND deleted=0", (doc_id,))
     if not doc:
         audit(user, action, doc_id, "document not found", "denied")
@@ -120,13 +129,16 @@ def _get_doc_checked(doc_id, user, action):
     if not can_access(user, doc):
         audit(user, action, doc_id, f"role {user['role']} outside scope ({doc['department']}/{doc['employee_id']})", "denied")
         raise HTTPException(403, "Access denied: this document is outside your role's scope. The attempt has been logged.")
+    if _retention_expired(doc) and not allow_expired:
+        audit(user, action, doc_id, "document retention period expired", "denied")
+        raise HTTPException(410, "Document retention period has expired")
     return doc
 
 
 def _public(doc):
     d = {k: v for k, v in doc.items() if k not in ("wrapped_key", "text_enc", "storage_name", "sha256")}
     d["doc_type_label"] = DOC_TYPES.get(doc["doc_type"], doc["doc_type"])
-    d["retention_expired"] = bool(doc["retention_until"]) and doc["retention_until"] < now().date().isoformat()
+    d["retention_expired"] = _retention_expired(doc)
     return d
 
 
@@ -289,10 +301,17 @@ class DocPatch(BaseModel):
 
 @router.patch("/docs/{doc_id}")
 def update_doc(doc_id: int, body: DocPatch, user=Depends(require("hr", "admin"))):
-    doc = _get_doc_checked(doc_id, user, "update")
+    doc = _get_doc_checked(doc_id, user, "update", allow_expired=body.retention_until is not None)
     if body.doc_type:
         if body.doc_type not in DOC_TYPES:
             raise HTTPException(400, "Unknown document type")
+    if body.retention_until:
+        try:
+            date.fromisoformat(body.retention_until)
+        except ValueError:
+            raise HTTPException(400, "Retention date must be YYYY-MM-DD")
+
+    if body.doc_type:
         ex("UPDATE vault_docs SET doc_type=?, doc_type_source='user', type_reason=? WHERE id=?",
            (body.doc_type, f"corrected by {user['username']}", doc_id))
         audit(user, "update", doc_id, f"type {doc['doc_type']} -> {body.doc_type}")
@@ -333,7 +352,8 @@ def search(qs: str, user=Depends(current_user)):
         raise HTTPException(400, "Type at least two characters")
     phrase = re.sub(r"\s+", " ", query.strip('"')).lower()
     terms = [t for t in re.findall(r"\w+", phrase) if len(t) > 1]
-    visible = {d["id"]: d for d in q(DOC_SELECT + " WHERE v.deleted=0") if can_access(user, d)}
+    visible = {d["id"]: d for d in q(DOC_SELECT + " WHERE v.deleted=0")
+               if can_access(user, d) and not _retention_expired(d)}
     results = []
     for doc_id, d in visible.items():
         text = TEXT.get(doc_id, "")
@@ -362,9 +382,7 @@ def audit_list(action: str | None = None, limit: int = 200, user=Depends(require
 @router.get("/storage/{doc_id}")
 def storage_proof(doc_id: int, user=Depends(require("admin"))):
     """Shows what is actually on disk for a document: ciphertext, not the file."""
-    doc = q1("SELECT * FROM vault_docs WHERE id=?", (doc_id,))
-    if not doc:
-        raise HTTPException(404, "Document not found")
+    doc = _get_doc_checked(doc_id, user, "storage-inspect")
     path = os.path.join(STORE_DIR, doc["storage_name"])
     with open(path, "rb") as f:
         raw = f.read()
@@ -392,7 +410,7 @@ class DeleteReq(BaseModel):
 
 @router.post("/docs/{doc_id}/delete-request")
 def request_delete(doc_id: int, body: DeleteReq, user=Depends(require("hr", "admin"))):
-    _get_doc_checked(doc_id, user, "delete-request")
+    _get_doc_checked(doc_id, user, "delete-request", allow_expired=True)
     if q1("SELECT id FROM vault_delete_requests WHERE doc_id=? AND status='pending'", (doc_id,)):
         raise HTTPException(400, "A deletion request is already waiting for approval")
     rid = ex("INSERT INTO vault_delete_requests(doc_id, requested_by, requested_at, reason) VALUES (?,?,?,?)",

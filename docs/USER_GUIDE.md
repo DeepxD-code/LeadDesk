@@ -7,8 +7,16 @@
 ## Signing in
 
 1. Open **http://localhost:8000** in any browser.
-2. On the sign-in screen, click the role you want to look at, then press **Sign in**. The demo password is already filled in.
+2. On the sign-in screen, choose a demo persona or enter a username and password. Demo accounts use `demo1234` unless `DEMO_PASSWORD` is configured.
 3. To switch users, click your name in the top-right corner and choose **Sign out**.
+
+---
+
+## Team forum
+
+Open **Team forum** from the left menu to start a discussion or reply to a teammate. All signed-in roles can read and
+write forum posts. The `tester` and `dev` demo accounts are limited to the forum; team members can sign in as `m01`
+through `m20`.
 
 ---
 

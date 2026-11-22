@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL,              -- lead | member | admin | hr | interviewer
+  role TEXT NOT NULL,              -- lead | member | admin | hr | interviewer | tester | developer
   employee_id TEXT,
   department TEXT,
   shift TEXT,
@@ -285,6 +285,25 @@ CREATE TABLE IF NOT EXISTS outbox (
   delivered INTEGER NOT NULL DEFAULT 0,
   error TEXT
 );
+
+-- ---------- Team forum ----------
+CREATE TABLE IF NOT EXISTS forum_posts (
+  id INTEGER PRIMARY KEY,
+  author_id INTEGER NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_forum_posts_updated ON forum_posts(updated_at DESC, id DESC);
+CREATE TABLE IF NOT EXISTS forum_replies (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES forum_posts(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_forum_replies_post ON forum_replies(post_id, id);
 """
 
 

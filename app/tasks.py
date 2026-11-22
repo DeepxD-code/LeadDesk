@@ -155,8 +155,10 @@ def task_history(task_id: int, user=Depends(current_user)):
     t = q1("SELECT * FROM tasks WHERE id=?", (task_id,))
     if not t:
         raise HTTPException(404, "Task not found")
-    if user["role"] == "member" and t["assignee_id"] != user["id"]:
-        raise HTTPException(403, "Not your task")
+    if user["role"] not in ("lead", "admin") and (
+        user["role"] != "member" or t["assignee_id"] != user["id"]
+    ):
+        raise HTTPException(403, "You cannot view this task history")
     ev = q("""SELECT e.*, u.name AS actor_name FROM task_events e LEFT JOIN users u ON u.id=e.actor_id
               WHERE task_id=? ORDER BY e.id""", (task_id,))
     names = {str(r["id"]): r["name"] for r in q("SELECT id, name FROM users")}

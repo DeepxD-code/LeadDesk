@@ -61,6 +61,15 @@ def seed_people():
             _user(f"int{n}", nm, "interviewer", None, "Operations")
 
 
+def ensure_forum_demo_users():
+    for username, name, role in (
+        ("tester", "LeadDesk Tester", "tester"),
+        ("dev", "LeadDesk Developer", "developer"),
+    ):
+        if not q1("SELECT id FROM users WHERE username=?", (username,)):
+            _user(username, name, role)
+
+
 TASKS = {
     "Data Entry": ["Key in vendor invoices batch {n}", "Update KYC fields for client batch {n}", "Enter claim forms - courier lot {n}",
                    "Capture purchase orders lot {n}", "Digitise bank mandates set {n}"],
@@ -306,6 +315,7 @@ def seed_interviews():
 def seed_all():
     log.info("Seeding demo data…")
     seed_people()
+    ensure_forum_demo_users()
     seed_tasks()
     seed_sops()
     seed_vault()

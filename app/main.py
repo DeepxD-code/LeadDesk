@@ -9,11 +9,11 @@ import logging
 import os
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import crypto, impact, interviews, llm, sop, tasks, vault
-from .auth import current_user
+from . import crypto, forum, impact, interviews, llm, sop, tasks, vault
+from .auth import COOKIE, current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
 
@@ -22,8 +22,25 @@ log = logging.getLogger("leaddesk")
 STATIC = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 
 app = FastAPI(title="LeadDesk", version="1.0")
-for r in (auth_router, tasks.router, sop.router, vault.router, interviews.router, interviews.public):
+for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router, interviews.public):
     app.include_router(r)
+
+
+@app.middleware("http")
+async def restrict_forum_demo_accounts(request, call_next):
+    path = request.url.path
+    allowed = path == "/api/health" or path.startswith(("/api/auth/", "/api/forum/"))
+    if path.startswith("/api/") and not allowed:
+        token = request.cookies.get(COOKIE) or request.headers.get("X-Session")
+        if token:
+            user = q1("""SELECT u.role FROM sessions s JOIN users u ON u.id=s.user_id
+                          WHERE s.token=? AND u.active=1""", (token,))
+            if user and user["role"] in ("tester", "developer"):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "This demo account can only access the community forum"},
+                )
+    return await call_next(request)
 
 
 async def _scheduler_loop():
@@ -39,9 +56,12 @@ async def _scheduler_loop():
 async def startup():
     init_db()
     crypto.load_master_key()
-    if os.environ.get("SEED_DEMO", "1") == "1" and not q1("SELECT id FROM users LIMIT 1"):
-        from .seed import seed_all
-        await asyncio.to_thread(seed_all)
+    if os.environ.get("SEED_DEMO", "1") == "1":
+        from .seed import ensure_forum_demo_users, seed_all
+        if not q1("SELECT id FROM users LIMIT 1"):
+            await asyncio.to_thread(seed_all)
+        else:
+            await asyncio.to_thread(ensure_forum_demo_users)
     sop.INDEX.rebuild()
     vault.load_text_index()
     asyncio.create_task(_scheduler_loop())

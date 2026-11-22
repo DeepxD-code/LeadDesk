@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Book your interview — LeadDesk</title>
+  <title>Book your interview | LeadDesk</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
   <link rel="stylesheet" href="/static/styles.css">
   <style>
@@ -190,7 +190,7 @@
       return '<div class="card"><div class="empty">' +
         (d.status === "scheduled"
           ? "No other times are open right now.<br><span class='small'>Ask your recruiter to add more availability.</span>"
-          : "No open times right now.<br><span class='small'>Your recruiter has been notified — please check back shortly or reply to their email.</span>") +
+          : "No open times right now.<br><span class='small'>Your recruiter has been notified. Please check back shortly or reply to their email.</span>") +
         "</div></div>";
     }
     return '<div class="card stack">' +
@@ -216,7 +216,7 @@
           (state.confirm ? "Confirm booking" : "Book this time") +
         "</button>" +
         '<p class="tiny muted center" style="margin:8px 0 0">' +
-          (state.chosen ? "Step " + (state.confirm ? "2 of 2 — press Confirm booking" : "1 of 2 — press Book, then confirm") : "Choose a time above to continue") +
+          (state.chosen ? "Step " + (state.confirm ? "2 of 2: press Confirm booking" : "1 of 2: press Book, then confirm") : "Choose a time above to continue") +
         "</p>" +
       "</div>" +
     "</div>";
@@ -235,7 +235,7 @@
     "</div>");
 
     if (d.status === "cancelled") {
-      parts.push('<div class="alert bad"><b>This interview was cancelled.</b><br>If you think that is a mistake, please contact your recruiter — they can send you a fresh link.</div>');
+      parts.push('<div class="alert bad"><b>This interview was cancelled.</b><br>If you think that is a mistake, please contact your recruiter. They can send you a fresh link.</div>');
       root.innerHTML = parts.join("");
       return;
     }
@@ -318,7 +318,7 @@
     }).catch(function (e) {
       state.busy = false;
       if (e.status === 409) {
-        toast("Sorry — that time was taken a moment ago. Please pick another.", "warn");
+        toast("Sorry, that time was taken a moment ago. Please pick another.", "warn");
       } else {
         toast(e.message, "bad");
       }

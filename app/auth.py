@@ -18,6 +18,8 @@ ROLE_LABELS = {
     "admin": "Administrator",
     "hr": "HR / Recruiter",
     "interviewer": "Interviewer",
+    "tester": "Tester",
+    "developer": "Developer",
 }
 
 
@@ -95,7 +97,7 @@ def demo_users():
     """Sign-in helper for the demo build: lists one account per role (no passwords)."""
     if os.environ.get("DEMO_MODE", "1") != "1":
         return {"users": []}
-    picks = ["lead", "m01", "m02", "admin", "hr1", "hr2", "int1", "int2"]
+    picks = ["lead", "m01", "tester", "dev", "admin", "hr1", "int1"]
     rows = q(f"SELECT * FROM users WHERE username IN ({','.join('?' * len(picks))})", picks)
     rows.sort(key=lambda r: picks.index(r["username"]))
-    return {"users": [public_user(r) for r in rows]}
+    return {"users": [public_user(r) for r in rows], "password": os.environ.get("DEMO_PASSWORD", "demo1234")}

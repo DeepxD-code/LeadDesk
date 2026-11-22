@@ -18,6 +18,40 @@ def test_wrong_password_is_refused(anon):
     assert r.status_code == 401
 
 
+def test_demo_logins_include_tester_and_developer(anon):
+    r = anon.get("/api/auth/demo-users")
+    assert r.status_code == 200
+    data = r.json()
+    accounts = {user["username"]: user["role"] for user in data["users"]}
+    assert accounts["tester"] == "tester"
+    assert accounts["dev"] == "developer"
+    assert data["password"] == "demo1234"
+
+
+def test_tester_and_developer_can_share_forum_but_not_app_data(tester, developer, member):
+    created = tester.post("/api/forum/posts", json={
+        "title": "Forum smoke test",
+        "body": "A tester started this discussion.",
+    })
+    assert created.status_code == 201
+    post_id = created.json()["post"]["id"]
+
+    assert developer.get("/api/forum/posts").json()["posts"][0]["id"] == post_id
+    reply = developer.post(f"/api/forum/posts/{post_id}/replies", json={"body": "A developer replied."})
+    assert reply.status_code == 201
+    thread = member.get(f"/api/forum/posts/{post_id}").json()
+    assert [item["author_role"] for item in thread["replies"]] == ["developer"]
+
+    assert tester.get("/api/tasks").status_code == 403
+    assert developer.get("/api/meta").status_code == 403
+    assert tester.get("/api/vault/docs").status_code == 403
+
+
+def test_forum_rejects_empty_messages(tester):
+    response = tester.post("/api/forum/posts", json={"title": "   ", "body": "  "})
+    assert response.status_code == 422
+
+
 def test_lead_sees_the_whole_team_board(lead):
     tasks = lead.get("/api/tasks").json()["tasks"]
     assert len(tasks) > 20
@@ -35,6 +69,20 @@ def test_member_sees_only_their_own_tasks(member):
     tasks = member.get("/api/tasks").json()["tasks"]
     assert tasks, "the demo seed should give every member work"
     assert all(t["assignee_id"] == member.get("/api/auth/me").json()["user"]["id"] for t in tasks)
+
+
+def test_task_history_is_limited_to_leads_and_assigned_members(lead, member, hr):
+    from app.db import q1
+
+    member_id = member.get("/api/auth/me").json()["user"]["id"]
+    own_task = q1("SELECT id FROM tasks WHERE assignee_id=? LIMIT 1", (member_id,))
+    other_task = q1("SELECT id FROM tasks WHERE assignee_id!=? LIMIT 1", (member_id,))
+    assert own_task and other_task
+
+    assert member.get(f"/api/tasks/{own_task['id']}/history").status_code == 200
+    assert member.get(f"/api/tasks/{other_task['id']}/history").status_code == 403
+    assert lead.get(f"/api/tasks/{own_task['id']}/history").status_code == 200
+    assert hr.get(f"/api/tasks/{own_task['id']}/history").status_code == 403
 
 
 # ---------------------------------------------------------------- SOP assistant
@@ -144,6 +192,45 @@ def test_denied_access_is_written_to_the_audit_log(hr):
     assert len(denied) == before + 1
     assert denied[0]["doc_id"] == doc["id"]
     assert denied[0]["role"] == "hr"
+
+
+def test_expired_vault_document_is_blocked_from_content_and_search(admin):
+    from datetime import timedelta
+
+    from app.db import ex, now, q1
+
+    doc = q1("SELECT id, original_name, doc_type, retention_until FROM vault_docs WHERE deleted=0 LIMIT 1")
+    assert doc
+    original_retention = doc["retention_until"]
+    ex("UPDATE vault_docs SET retention_until=? WHERE id=?",
+       ((now().date() - timedelta(days=1)).isoformat(), doc["id"]))
+    try:
+        assert admin.get(f"/api/vault/docs/{doc['id']}").status_code == 410
+        assert admin.get(f"/api/vault/docs/{doc['id']}/file").status_code == 410
+        assert admin.get(f"/api/vault/storage/{doc['id']}").status_code == 410
+
+        listed = next(d for d in admin.get("/api/vault/docs").json()["docs"] if d["id"] == doc["id"])
+        assert listed["retention_expired"] is True
+        query = doc["original_name"].rsplit(".", 1)[0]
+        results = admin.get("/api/vault/search", params={"qs": query}).json()["results"]
+        assert doc["id"] not in {result["doc"]["id"] for result in results}
+
+        from app.vault import DOC_TYPES
+
+        replacement_type = next(kind for kind in DOC_TYPES if kind != doc["doc_type"])
+        invalid = admin.patch(f"/api/vault/docs/{doc['id']}", json={
+            "doc_type": replacement_type,
+            "retention_until": "tomorrow"
+        })
+        assert invalid.status_code == 400
+        assert q1("SELECT doc_type FROM vault_docs WHERE id=?", (doc["id"],))["doc_type"] == doc["doc_type"]
+
+        renewed_until = (now().date() + timedelta(days=1)).isoformat()
+        renewed = admin.patch(f"/api/vault/docs/{doc['id']}", json={"retention_until": renewed_until})
+        assert renewed.status_code == 200, renewed.text
+        assert admin.get(f"/api/vault/docs/{doc['id']}").status_code == 200
+    finally:
+        ex("UPDATE vault_docs SET retention_until=? WHERE id=?", (original_retention, doc["id"]))
 
 
 def test_audit_log_refuses_edits_and_deletes(admin):

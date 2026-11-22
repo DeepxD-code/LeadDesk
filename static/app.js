@@ -1,4 +1,4 @@
-/* LeadDesk front end — plain JavaScript, no build step. */
+/* LeadDesk front end - plain JavaScript, no build step. */
 "use strict";
 
 // ------------------------------------------------------------------ helpers
@@ -67,7 +67,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function fmtTime(d) { let h = d.getHours(), m = d.getMinutes(); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return `${h}:${String(m).padStart(2, "0")} ${ap}`; }
 function fmtDT(s, withDay = true) {
-  const d = parseLocal(s); if (!d) return "—";
+  const d = parseLocal(s); if (!d) return "-";
   const n = nowServer(); const sameDay = d.toDateString() === n.toDateString();
   const tmr = new Date(n); tmr.setDate(n.getDate() + 1);
   const yst = new Date(n); yst.setDate(n.getDate() - 1);
@@ -92,38 +92,42 @@ const prioPill = (p) => html`<span class="pill prio-${p}">${p[0].toUpperCase() +
 
 // ------------------------------------------------------------------ state + nav
 const S = { me: null, meta: null, notes: { items: [], unread: 0 }, ai: null, counts: {} };
+const FORUM_ONLY_ROLES = new Set(["tester", "developer"]);
 
 const NAV = {
-  lead: [["Team", [["overview", "📊", "Today's overview"], ["board", "🗂️", "Task board"]]],
-         ["Knowledge", [["assistant", "💬", "Ask the SOPs"], ["needs-lead", "🙋", "Needs lead", "needs"], ["sops", "📚", "SOP library"]]],
-         ["Me", [["vault", "🔐", "My documents"], ["proof", "✅", "How we know it works"]]],
-         ["", [["demo", "🎬", "Judge demo"]]]],
-  member: [["Work", [["my-tasks", "✅", "My tasks"], ["assistant", "💬", "Ask the SOPs"]]],
-           ["Me", [["vault", "🔐", "My documents"]]]],
-  hr: [["People", [["vault", "🔐", "Document vault"], ["interviews", "🗓️", "Interviews"]]],
-       ["Help", [["assistant", "💬", "Ask the SOPs"], ["proof", "✅", "How we know it works"]]],
-       ["", [["demo", "🎬", "Judge demo"]]]],
-  admin: [["Team", [["overview", "📊", "Today's overview"], ["board", "🗂️", "Task board"]]],
-          ["Knowledge", [["assistant", "💬", "Ask the SOPs"], ["needs-lead", "🙋", "Needs lead", "needs"], ["sops", "📚", "SOP library"]]],
-          ["People", [["vault", "🔐", "Document vault"], ["audit", "🧾", "Audit log"], ["interviews", "🗓️", "Interviews"]]],
-          ["", [["proof", "✅", "How we know it works"], ["demo", "🎬", "Judge demo"]]]],
-  interviewer: [["Interviews", [["my-interviews", "🗓️", "My interviews"], ["availability", "🕒", "My availability"]]]],
+  lead: [["Workspace", [["overview", "", "Overview"], ["board", "", "Task board"]]],
+         ["Knowledge", [["assistant", "", "SOP assistant"], ["needs-lead", "", "Unanswered", "needs"], ["sops", "", "SOP library"]]],
+         ["Records", [["vault", "", "Documents"], ["proof", "", "System proof"]]],
+         ["Presentation", [["demo", "", "Demo walkthrough"]]]],
+  member: [["Work", [["my-tasks", "", "My tasks"], ["assistant", "", "SOP assistant"]]],
+           ["Records", [["vault", "", "My documents"]]]],
+  hr: [["People", [["vault", "", "Document vault"], ["interviews", "", "Interviews"]]],
+       ["Knowledge", [["assistant", "", "SOP assistant"], ["proof", "", "System proof"]]],
+       ["Presentation", [["demo", "", "Demo walkthrough"]]]],
+  admin: [["Workspace", [["overview", "", "Overview"], ["board", "", "Task board"]]],
+          ["Knowledge", [["assistant", "", "SOP assistant"], ["needs-lead", "", "Unanswered", "needs"], ["sops", "", "SOP library"]]],
+          ["Records", [["vault", "", "Document vault"], ["audit", "", "Audit log"], ["interviews", "", "Interviews"]]],
+          ["System", [["proof", "", "System proof"], ["demo", "", "Demo walkthrough"]]]],
+  interviewer: [["Interviews", [["my-interviews", "", "My interviews"], ["availability", "", "Availability"]]]],
+  tester: [["Community", [["forum", "", "Team forum"]]]],
+  developer: [["Community", [["forum", "", "Team forum"]]]],
 };
-const HOME = { lead: "overview", member: "my-tasks", hr: "vault", admin: "overview", interviewer: "my-interviews" };
+const HOME = { lead: "overview", member: "my-tasks", hr: "vault", admin: "overview", interviewer: "my-interviews",
+  tester: "forum", developer: "forum" };
 
 // ------------------------------------------------------------------ login
 async function renderLogin() {
-  const { users, password } = await api("/api/auth/demo-users").catch(() => ({ users: [] }));
+  const { users = [], password } = await api("/api/auth/demo-users").catch(() => ({ users: [] }));
   $("#root").innerHTML = html`
   <div class="login">
     <div class="hero">
-      <div class="brand" style="padding:0"><span class="logo">🧭</span> LeadDesk</div>
-      <h1>See the whole team on one screen.<br>Answer SOP questions without being interrupted.</h1>
+      <div class="brand" style="padding:0"><span class="logo">LD</span> LeadDesk</div>
+      <h1>Operations workspace</h1>
       <ul>
-        <li>📊 Workload at a glance: who is overloaded, what is overdue, what is due today</li>
-        <li>💬 An assistant that answers <b>only from your SOPs</b>, shows the source, and passes on what it can't answer</li>
-        <li>🔒 Runs fully on your own machine: local AI, no cloud calls</li>
-        <li>🔐 Plus: encrypted HR document vault · 🗓️ interview scheduler</li>
+        <li>See workload, deadlines, and priorities in one view</li>
+        <li>Answer team questions from verified SOP sources</li>
+        <li>Keep HR documents encrypted and access controlled</li>
+        <li>Coordinate interviews with independent booking and feedback</li>
       </ul>
     </div>
     <div class="panel">
@@ -134,7 +138,7 @@ async function renderLogin() {
         <label class="f">Password <input class="input" name="password" type="password" autocomplete="current-password" required></label>
         <button class="btn primary big" type="submit">Sign in</button>
       </form>
-      ${users.length ? html`<button class="btn big tour" id="tour">▶ Take the 3-minute demo</button>
+      ${users.length ? html`<button class="btn big tour" id="tour">Open guided demo</button>
         <p class="muted tiny" id="tourhint" style="margin:6px 0 0">Signs you in as a team lead and walks the whole product, one real action at a time.</p>
         <h3 style="margin-top:24px">Demo: sign in as…</h3>
         <div class="persona">${users.map((u) => html`<button data-u="${u.username}"><b>${u.name}</b><span class="muted small">${u.role_label}${u.department && u.role === "hr" ? " · " + u.department : ""}${u.shift ? " · " + u.shift + " shift" : ""}</span></button>`)}</div>` : ""}
@@ -160,49 +164,61 @@ async function boot() {
   if (!S.me) {
     try { S.me = (await api("/api/auth/me")).user; } catch { return renderLogin(); }
   }
-  S.meta = await api("/api/meta");
-  skewMs = parseLocal(S.meta.now) - Date.now();
+  const forumOnly = FORUM_ONLY_ROLES.has(S.me.role);
+  if (forumOnly) {
+    const health = await api("/api/health");
+    skewMs = parseLocal(health.time) - Date.now();
+    S.meta = null;
+  } else {
+    S.meta = await api("/api/meta");
+    skewMs = parseLocal(S.meta.now) - Date.now();
+  }
   renderShell();
   route();
-  refreshNotes(); refreshAI();
   clearInterval(S.timer);
-  S.timer = setInterval(() => { refreshNotes(); }, 20000);
+  if (!forumOnly) {
+    refreshNotes(); refreshAI();
+    S.timer = setInterval(() => { refreshNotes(); }, 20000);
+  }
 }
 
 function renderShell() {
   const me = S.me;
+  const forumOnly = FORUM_ONLY_ROLES.has(me.role);
   const groups = NAV[me.role] || [];
   $("#root").innerHTML = html`
   <div class="app">
     <aside class="side">
-      <div class="brand"><span class="logo">🧭</span> LeadDesk</div>
+      <div class="brand"><span class="logo">LD</span> LeadDesk</div>
       <nav class="nav">
         ${groups.map(([g, items]) => html`${g ? html`<div class="nav-group">${g}</div>` : html`<div style="height:10px"></div>`}
           ${items.map(([id, ico, label, badge]) => html`<a href="#/${id}" data-nav="${id}"><span class="ico">${ico}</span>${label}${badge ? html`<span class="badge hidden" data-badge="${badge}"></span>` : ""}</a>`)}`)}
       </nav>
-      <div class="foot">All times IST (UTC+05:30)<br>AI runs locally</div>
+      <div class="foot">${forumOnly ? "Forum access only" : html`All times IST (UTC+05:30)<br>AI runs locally`}</div>
     </aside>
     <main class="main">
       <div class="top">
         <div class="who">${avatar(me.name, me.id)}<div><b>${me.name}</b><div class="muted tiny">${me.role_label}${me.role === "hr" ? " · " + me.department : ""}${me.shift ? " · " + me.shift + " shift" : ""}</div></div></div>
-        <span class="pill ai-pill" id="aipill">AI: checking…</span>
-        <div style="position:relative">
-          <button class="iconbtn" id="bell" title="Notifications">🔔<span class="n hidden" id="belln"></span></button>
-          <div class="pop hidden" id="pop"></div>
-        </div>
-        <select class="input" id="switch" title="Demo: switch person"></select>
+        ${forumOnly ? "" : html`<span class="pill ai-pill" id="aipill">AI: checking…</span>
+          <div style="position:relative">
+            <button class="iconbtn" id="bell" title="Notifications" aria-label="Notifications"><span aria-hidden="true">N</span><span class="n hidden" id="belln"></span></button>
+            <div class="pop hidden" id="pop"></div>
+          </div>
+          <select class="input" id="switch" title="Demo: switch person"></select>`}
         <button class="btn sm" id="logout">Sign out</button>
       </div>
       <div class="content" id="view"></div>
     </main>
   </div>`;
   $("#logout").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); S.me = null; location.hash = ""; renderLogin(); };
-  $("#bell").onclick = toggleNotes;
+  const bell = $("#bell");
+  if (bell) bell.onclick = toggleNotes;
   document.addEventListener("mousedown", (e) => { if (!e.target.closest("#pop") && !e.target.closest("#bell")) $("#pop")?.classList.add("hidden"); });
   api("/api/auth/demo-users").then(({ users, password }) => {
     const sel = $("#switch");
+    if (!sel) return;
     if (!users.length) return sel.remove();
-    sel.innerHTML = `<option value="">Switch person (demo)…</option>` + users.map((u) => `<option value="${esc(u.username)}">${esc(u.name)} — ${esc(u.role_label)}</option>`).join("");
+    sel.innerHTML = `<option value="">Switch person (demo)…</option>` + users.map((u) => `<option value="${esc(u.username)}">${esc(u.name)} - ${esc(u.role_label)}</option>`).join("");
     sel.onchange = async () => {
       if (!sel.value) return;
       await api("/api/auth/login", { method: "POST", body: { username: sel.value, password } }).then((r) => { S.me = r.user; location.hash = ""; boot(); }).catch(fail);
@@ -256,77 +272,166 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 
+async function drawForum(el) {
+  const { posts } = await api("/api/forum/posts");
+  el.innerHTML = html`
+    <div class="page-head"><div class="grow"><h1>Team forum</h1><p>Share updates, ask questions, and reply across the team.</p></div>
+      <button class="btn primary" id="new-forum-post">Start a discussion</button></div>
+    ${posts.length ? html`<div class="grid">${posts.map((post) => html`
+      <article class="card forum-card">
+        <div class="row"><div>${avatar(post.author_name, post.id)}</div><div><b>${post.author_name}</b>
+          <div class="muted tiny">${post.author_role_label} · ${fmtDT(post.updated_at)}</div></div>
+          <span class="pill">${post.reply_count} ${post.reply_count === 1 ? "reply" : "replies"}</span></div>
+        <h2 class="forum-title">${post.title}</h2><p class="forum-body">${post.body}</p>
+        <button class="btn sm" data-thread="${post.id}">Open discussion</button>
+      </article>`)}</div>` : html`<div class="card empty">No discussions yet. Start one to get the conversation going.</div>`}`;
+  $("#new-forum-post", el).onclick = () => openForumPost(el);
+  $$("[data-thread]", el).forEach((button) => {
+    button.onclick = () => showForumThread(+button.dataset.thread, el).catch(fail);
+  });
+}
+
+function openForumPost(el) {
+  const ov = modal(html`
+    <div class="page-head"><div class="grow"><h2>Start a discussion</h2></div><button class="btn sm" data-close>Close</button></div>
+    <form id="forum-post-form" class="stack">
+      <label class="f">Title <input class="input" name="title" maxlength="120" required></label>
+      <label class="f">Message <textarea class="input forum-input" name="body" rows="6" maxlength="5000" required></textarea></label>
+      <div class="row"><span class="grow"></span><button class="btn primary" type="submit">Post discussion</button></div>
+    </form>`.s, { wide: true });
+  $("#forum-post-form", ov).onsubmit = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = $("button[type=submit]", event.currentTarget);
+    button.disabled = true;
+    try {
+      const { post } = await api("/api/forum/posts", {
+        method: "POST",
+        body: { title: form.get("title"), body: form.get("body") },
+      });
+      closeModal();
+      await drawForum(el);
+      await showForumThread(post.id, el);
+    } catch (error) {
+      fail(error);
+      button.disabled = false;
+    }
+  };
+}
+
+async function showForumThread(id, el) {
+  const { post, replies } = await api(`/api/forum/posts/${id}`);
+  const ov = modal(html`
+    <div class="page-head"><div class="grow"><h2>${post.title}</h2></div><button class="btn sm" data-close>Close</button></div>
+    <div class="muted small">Started by <b>${post.author_name}</b> · ${post.author_role_label} · ${fmtDT(post.created_at)}</div>
+    <p class="forum-body forum-thread-body">${post.body}</p>
+    <h3>${replies.length} ${replies.length === 1 ? "reply" : "replies"}</h3>
+    ${replies.length ? html`<div class="forum-replies">${replies.map((reply) => html`
+      <article class="forum-reply"><div class="row"><b>${reply.author_name}</b><span class="muted tiny">${reply.author_role_label} · ${fmtDT(reply.created_at)}</span></div>
+        <p class="forum-body">${reply.body}</p></article>`)}</div>` : html`<p class="muted small">No replies yet.</p>`}
+    <form id="forum-reply-form" class="stack">
+      <label class="f">Add a reply <textarea class="input forum-input" name="body" rows="3" maxlength="3000" required></textarea></label>
+      <div class="row"><span class="grow"></span><button class="btn primary" type="submit">Reply</button></div>
+    </form>`.s, { wide: true });
+  $("#forum-reply-form", ov).onsubmit = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = $("button[type=submit]", event.currentTarget);
+    button.disabled = true;
+    try {
+      await api(`/api/forum/posts/${id}/replies`, { method: "POST", body: { body: form.get("body") } });
+      await drawForum(el);
+      await showForumThread(id, el);
+    } catch (error) {
+      fail(error);
+      button.disabled = false;
+    }
+  };
+}
+
+VIEWS.forum = drawForum;
+
 // ------------------------------------------------------------------ overview (lead)
 VIEWS.overview = async (el) => {
   const [w, qs] = await Promise.all([api("/api/workload"), api("/api/sop/questions?status=needs_lead")]);
   const t = w.totals;
-  const helpers = w.members.filter((m) => m.needs_help).sort((a, b) => b.overdue - a.overdue || b.open - a.open);
+  const helpers = w.members.filter((m) => m.needs_help).sort((a, b) => b.overdue - a.overdue || b.open - a.open).slice(0, 5);
   const maxOpen = Math.max(w.threshold + 2, ...w.members.map((m) => m.open));
-  const shifts = ["", "Morning", "Evening"];
+  const chartMembers = w.members.slice(0, 7);
   el.innerHTML = html`
   <div class="page-head">
     <div class="grow"><h1>Good ${nowServer().getHours() < 12 ? "morning" : nowServer().getHours() < 17 ? "afternoon" : "evening"}, ${S.me.name.split(" ")[0]}</h1>
-      <p>${t.members} people · ${t.open} open tasks · updated ${fmtTime(parseLocal(w.now))} IST</p></div>
-    <div class="seg" id="shift">${shifts.map((s) => html`<button data-s="${s}" class="${s === "" ? "on" : ""}">${s || "Both shifts"}</button>`)}</div>
-    <button class="btn" id="exp">⬇ Workload report</button>
-    <button class="btn primary" id="newt">＋ New task</button>
+      <p>${t.open} open tasks across ${t.members} people · updated ${fmtTime(parseLocal(w.now))}</p></div>
+    <button class="btn" id="exp">Export report</button>
+    <button class="btn primary" id="newt"><span aria-hidden="true">+</span> New task</button>
   </div>
-  <div class="kpis">
-    <div class="kpi click ${t.overdue ? "bad" : "ok"}" data-go="board?filter=overdue"><div class="v">${t.overdue}</div><div class="l">Overdue</div></div>
-    <div class="kpi click ${t.due_today ? "warn" : ""}" data-go="board?filter=today"><div class="v">${t.due_today}</div><div class="l">Due today</div></div>
-    <div class="kpi click ${t.escalated ? "warn" : ""}" data-go="board?filter=escalated"><div class="v">${t.escalated}</div><div class="l">Escalated</div></div>
-    <div class="kpi ${t.overloaded ? "bad" : "ok"}"><div class="v">${t.overloaded}</div><div class="l">People overloaded</div></div>
-    <div class="kpi click" data-go="board?filter=unassigned"><div class="v">${t.unassigned}</div><div class="l">Not assigned yet</div></div>
-    <div class="kpi click ${qs.counts.needs_lead ? "warn" : "ok"}" data-go="needs-lead"><div class="v">${qs.counts.needs_lead || 0}</div><div class="l">Questions for you</div></div>
-    <div class="kpi ok"><div class="v">${t.done_today}</div><div class="l">Done today</div></div>
+  <div class="metric-strip">
+    <button class="metric-card" data-go="board?filter=overdue"><span class="metric-label">Overdue</span><strong>${t.overdue}</strong><span class="metric-trend bad">Needs action</span></button>
+    <button class="metric-card" data-go="board?filter=today"><span class="metric-label">Due today</span><strong>${t.due_today}</strong><span class="metric-trend warn">Next 24 hours</span></button>
+    <button class="metric-card" data-go="board?filter=escalated"><span class="metric-label">Escalated</span><strong>${t.escalated}</strong><span class="metric-trend">Active issues</span></button>
+    <button class="metric-card" data-go="board"><span class="metric-label">Open workload</span><strong>${t.open}</strong><span class="metric-trend">${t.overloaded} overloaded</span></button>
   </div>
-  <div class="grid g-main">
-    <div class="card">
-      <div class="section-title"><h2>Workload by person</h2><span class="grow"></span>
-        <label class="row small muted">Overloaded at <input id="thr" class="input" type="number" min="1" max="50" value="${w.threshold}" style="width:70px"> open tasks</label>
+  <div class="dashboard-grid">
+    <section class="panel workload-panel">
+      <header class="panel-head">
+        <div><h2>Team workload</h2><p>Open tasks by team member</p></div>
+        <div class="seg view-tabs" id="workload-tabs">
+          <button class="on" data-chart="open">Open</button>
+          <button data-chart="overdue">Overdue</button>
+        </div>
+      </header>
+      <div class="chart-shell">
+        <div class="chart-y"><span>${maxOpen}</span><span>${Math.round(maxOpen * .75)}</span><span>${Math.round(maxOpen * .5)}</span><span>${Math.round(maxOpen * .25)}</span><span>0</span></div>
+        <div class="bar-chart" id="bar-chart">
+          ${chartMembers.map((m) => html`
+            <button class="bar-item" data-member="${m.id}" title="${m.name}: ${m.open} open tasks">
+              <span class="bar-track"><span class="bar-fill ${m.overloaded ? "bar-danger" : m.open >= w.threshold - 1 ? "bar-warn" : ""}" data-open="${m.open}" data-overdue="${m.overdue}" style="height:${Math.max(7, (m.open / maxOpen) * 100)}%"></span></span>
+              <span class="bar-name">${m.name.split(" ")[0]}<small>${m.open}</small></span>
+            </button>
+          `)}
+        </div>
       </div>
-      <table class="t" id="wl">
-        <thead><tr><th>Person</th><th>Shift</th><th style="width:30%">Open tasks</th><th class="num">Overdue</th><th class="num">Due today</th><th class="num">Done today</th><th></th></tr></thead>
-        <tbody>${w.members.map((m) => {
-          const pct = Math.min(100, (m.open / maxOpen) * 100), thp = (w.threshold / maxOpen) * 100;
-          const cls = m.overloaded ? "over" : m.open >= w.threshold - 1 ? "near" : "";
-          return html`<tr class="click ${m.overloaded ? "hl" : ""}" data-shift="${m.shift}" data-member="${m.id}">
-            <td><div class="member">${avatar(m.name, m.id)}<span>${m.name}</span></div></td>
-            <td class="muted small">${m.shift}</td>
-            <td><div class="row" style="gap:8px;flex-wrap:nowrap"><div class="wbar ${cls} grow"><span style="width:${pct}%"></span><i class="th" style="left:${thp}%"></i></div><b style="width:22px">${m.open}</b></div></td>
-            <td class="num">${m.overdue ? html`<span class="pill bad">${m.overdue}</span>` : html`<span class="muted">0</span>`}</td>
-            <td class="num">${m.due_today ? html`<span class="pill warn">${m.due_today}</span>` : html`<span class="muted">0</span>`}</td>
-            <td class="num muted">${m.done_today}</td>
-            <td>${m.overloaded ? html`<span class="pill bad">Overloaded</span>` : m.escalated ? html`<span class="pill warn">Escalated</span>` : ""}</td></tr>`;
-        })}</tbody>
-      </table>
-    </div>
-    <div class="stack">
-      <div class="card"><h2>🆘 Who needs help</h2>
-        ${helpers.length ? html`<div class="stack">${helpers.slice(0, 6).map((m) => html`<div class="row" style="flex-wrap:nowrap">${avatar(m.name, m.id)}<div class="grow"><b>${m.name}</b>
-          <div class="muted small">${m.open} open${m.overdue ? ` · ${m.overdue} overdue` : ""}${m.overloaded ? " · above limit" : ""}</div></div>
-          <button class="btn sm" data-member="${m.id}">View tasks</button></div>`)}</div>` : html`<div class="empty">Nobody is overloaded or behind. 🎉</div>`}
-      </div>
-      <div class="card"><h2>⏰ At risk</h2>
-        ${w.at_risk.length ? html`<table class="t"><tbody>${w.at_risk.slice(0, 10).map((x) => html`<tr class="click" data-task="${x.id}">
-          <td><b>${x.title}</b><div class="muted small">${x.assignee_name || "Unassigned"} · ${x.task_type}</div></td>
-          <td class="num"><span class="pill ${x.overdue ? "bad" : x.status === "escalated" ? "warn" : "warn"}">${x.overdue ? rel(x.deadline) : x.status === "escalated" ? "Escalated" : "Due " + fmtTime(parseLocal(x.deadline))}</span></td></tr>`)}</tbody></table>`
-          : html`<div class="empty">Nothing at risk right now.</div>`}
-      </div>
-    </div>
-  </div>`;
+      <footer class="panel-foot"><span><i class="legend-dot normal"></i>Within capacity</span><span><i class="legend-dot warning"></i>Near limit</span><span><i class="legend-dot danger"></i>Overloaded</span><button class="text-action" id="show-all">View all people</button></footer>
+    </section>
+    <aside class="dashboard-side">
+      <section class="panel attention-panel">
+        <header class="panel-head"><div><h2>Needs attention</h2><p>People with the highest risk</p></div><button class="icon-action" id="attention-next" aria-label="View all">›</button></header>
+        ${helpers.length ? html`<div class="attention-list">${helpers.map((m) => html`<button class="attention-row" data-member="${m.id}">
+          ${avatar(m.name, m.id)}<span class="grow"><b>${m.name}</b><small>${m.overdue ? `${m.overdue} overdue` : `${m.open} open tasks`}</small></span><span class="chevron">›</span>
+        </button>`)}</div>` : html`<div class="empty-state">No people need attention</div>`}
+      </section>
+      <section class="panel concise-panel">
+        <button class="concise-row" data-go="needs-lead"><span><small>Unanswered questions</small><strong>${qs.counts.needs_lead || 0}</strong></span><span class="chevron">›</span></button>
+        <button class="concise-row" data-go="board?filter=overdue"><span><small>Past deadline</small><strong>${t.overdue}</strong></span><span class="chevron">›</span></button>
+      </section>
+    </aside>
+  </div>
+  <section class="panel recent-panel">
+    <header class="panel-head"><div><h2>At risk</h2><p>Tasks requiring the next action</p></div><button class="text-action" id="view-risk">View task board</button></header>
+    ${w.at_risk.length ? html`<div class="risk-table">${w.at_risk.slice(0, 5).map((x) => html`<button class="risk-row" data-task="${x.id}">
+      <span class="risk-status ${x.overdue ? "bad" : "warn"}"></span>
+      <span class="risk-name"><strong>${x.title}</strong><small>${x.assignee_name || "Unassigned"} · ${x.task_type}</small></span>
+      <span class="risk-meta ${x.overdue ? "bad" : ""}">${x.overdue ? rel(x.deadline) : x.status === "escalated" ? "Escalated" : "Due " + fmtTime(parseLocal(x.deadline))}</span>
+      <span class="chevron">›</span>
+    </button>`)}</div>` : html`<div class="empty-state">No tasks are at risk</div>`}
+  </section>`;
   $$("[data-go]", el).forEach((k) => (k.onclick = () => (location.hash = "#/" + k.dataset.go)));
   $$("[data-member]", el).forEach((r) => (r.onclick = () => (location.hash = "#/board?member=" + r.dataset.member)));
   $$("[data-task]", el).forEach((r) => (r.onclick = () => openTask(+r.dataset.task, () => route())));
   $("#newt").onclick = () => taskForm(null, () => route());
   $("#exp").onclick = () => exportMenu();
-  $("#thr").onchange = async (e) => {
-    try { await api("/api/settings/overload-threshold", { method: "PUT", body: { threshold: +e.target.value } }); toast("Overload limit saved", "ok"); route(); } catch (er) { fail(er); }
-  };
-  $$("#shift button", el).forEach((b) => (b.onclick = () => {
-    $$("#shift button", el).forEach((x) => x.classList.toggle("on", x === b));
-    $$("#wl tbody tr", el).forEach((tr) => tr.classList.toggle("hidden", !!b.dataset.s && tr.dataset.shift !== b.dataset.s));
-  }));
+  $("#show-all").onclick = () => (location.hash = "#/board");
+  $("#view-risk").onclick = () => (location.hash = "#/board");
+  $("#attention-next").onclick = () => (location.hash = "#/board");
+  $$("#workload-tabs button", el).forEach((tab) => tab.onclick = () => {
+    $$("#workload-tabs button", el).forEach((item) => item.classList.toggle("on", item === tab));
+    const metric = tab.dataset.chart;
+    $$(".bar-fill", el).forEach((bar) => {
+      const value = +bar.dataset[metric];
+      bar.style.height = `${Math.max(metric === "overdue" && value === 0 ? 3 : 7, (value / (metric === "open" ? maxOpen : Math.max(1, ...chartMembers.map((m) => m.overdue)))) * 100)}%`;
+      bar.className = `bar-fill ${metric === "overdue" ? (value > 0 ? "bar-danger" : "") : bar.dataset.open >= w.threshold - 1 ? "bar-warn" : ""}`;
+    });
+  });
 };
 
 function exportMenu() {
@@ -342,7 +447,7 @@ VIEWS.board = async (el, params) => {
   el.innerHTML = html`
   <div class="page-head">
     <div class="grow"><h1>Task board</h1><p>Drag a card to change its status. Click a card for details and history.</p></div>
-    <button class="btn primary" id="newt">＋ New task</button>
+    <button class="btn primary" id="newt">New task</button>
   </div>
   <div class="card" style="padding:12px;margin-bottom:14px">
     <div class="row">
@@ -409,7 +514,7 @@ function taskForm(task, done) {
     <form id="tf" class="stack">
       <label class="f">What needs doing? <input class="input" name="title" required minlength="2" value="${t.title}" placeholder="e.g. Reconcile HDFC account for 22 Nov"></label>
       <div class="form-grid">
-        <label class="f">Assign to <select class="input" name="assignee_id"><option value="">— Not yet —</option>${M.members.map((m) => html`<option value="${m.id}" ${m.id === t.assignee_id ? raw("selected") : ""}>${m.name} (${m.shift})</option>`)}</select></label>
+        <label class="f">Assign to <select class="input" name="assignee_id"><option value="">- Not yet -</option>${M.members.map((m) => html`<option value="${m.id}" ${m.id === t.assignee_id ? raw("selected") : ""}>${m.name} (${m.shift})</option>`)}</select></label>
         <label class="f">Type <select class="input" name="task_type">${M.task_types.map((x) => html`<option ${x === t.task_type ? raw("selected") : ""}>${x}</option>`)}</select></label>
         <label class="f">Deadline (IST) <input class="input" type="datetime-local" name="deadline" required value="${t.deadline.slice(0, 16)}"></label>
         <label class="f">Priority <select class="input" name="priority">${M.priorities.map((p) => html`<option value="${p}" ${p === t.priority ? raw("selected") : ""}>${p}</option>`)}</select></label>
@@ -425,9 +530,9 @@ function taskForm(task, done) {
     const sel = $("[name=assignee_id]", ov);
     const show = () => {
       const m = w.members.find((x) => String(x.id) === sel.value);
-      $("#loadhint", ov).innerHTML = m ? `<span class="pill ${m.overloaded ? "bad" : m.open >= w.threshold - 1 ? "warn" : "ok"}">${esc(m.name)} has ${m.open} open task(s)${m.overdue ? `, ${m.overdue} overdue` : ""}${m.overloaded ? " — above the limit" : ""}</span>` : "";
+      $("#loadhint", ov).innerHTML = m ? `<span class="pill ${m.overloaded ? "bad" : m.open >= w.threshold - 1 ? "warn" : "ok"}">${esc(m.name)} has ${m.open} open task(s)${m.overdue ? `, ${m.overdue} overdue` : ""}${m.overloaded ? " - above the limit" : ""}</span>` : "";
     };
-    $$("option", sel).forEach((o) => { const m = w.members.find((x) => String(x.id) === o.value); if (m) o.textContent += ` — ${m.open} open${m.overloaded ? " ⚠" : ""}`; });
+    $$("option", sel).forEach((o) => { const m = w.members.find((x) => String(x.id) === o.value); if (m) o.textContent += ` - ${m.open} open${m.overloaded ? " ⚠" : ""}`; });
     sel.onchange = show; show();
   });
   $("#tf", ov).onsubmit = async (e) => {
@@ -437,7 +542,7 @@ function taskForm(task, done) {
     try {
       if (task) await api(`/api/tasks/${task.id}`, { method: "PATCH", body: f });
       else await api("/api/tasks", { method: "POST", body: f });
-      closeModal(); toast(task ? "Task saved" : f.assignee_id ? "Task created — the person has been notified" : "Task created", "ok"); done && done();
+      closeModal(); toast(task ? "Task saved" : f.assignee_id ? "Task created - the person has been notified" : "Task created", "ok"); done && done();
     } catch (er) { fail(er); }
   };
 }
@@ -453,7 +558,7 @@ async function openTask(id, done) {
     <div class="form-grid" style="margin-bottom:14px">
       <div><div class="muted small">Assigned to</div><b>${t.assignee_name || "Not assigned"}</b></div>
       <div><div class="muted small">Deadline</div><b>${fmtDT(t.deadline)}</b></div>
-      <div><div class="muted small">Created by</div><b>${t.created_by_name || "—"}</b></div>
+      <div><div class="muted small">Created by</div><b>${t.created_by_name || "-"}</b></div>
     </div>
     ${t.description ? html`<p>${t.description}</p>` : ""}
     <div class="row" style="margin-bottom:16px">
@@ -494,12 +599,12 @@ VIEWS["my-tasks"] = async (el, params) => {
   open.sort((a, b) => order(a) - order(b) || a.deadline.localeCompare(b.deadline));
   el.innerHTML = html`
   <div class="page-head"><div class="grow"><h1>My tasks</h1><p>${open.length} to do${open.filter((t) => t.overdue).length ? ` · ${open.filter((t) => t.overdue).length} overdue` : ""}. Stuck? Press “Need help” or ask the SOPs.</p></div>
-    <a class="btn" href="#/assistant">💬 Ask the SOPs</a></div>
+    <a class="btn" href="#/assistant">Open SOP assistant</a></div>
   <div class="stack">
-    ${open.length ? open.map((t) => html`<div class="card mytask ${t.overdue ? "" : ""}" style="${t.overdue ? "border-left:5px solid var(--bad)" : t.due_today ? "border-left:5px solid #f59e0b" : ""}">
+    ${open.length ? open.map((t) => html`    <div class="card mytask ${t.overdue ? "overdue" : t.due_today ? "today" : ""}">
       <div><div class="row" style="gap:8px;margin-bottom:6px">${statusPill(t.status)}${prioPill(t.priority)}<span class="pill">${t.task_type}</span></div>
         <h2 style="margin:0 0 4px;cursor:pointer" data-open="${t.id}">${t.title}</h2>
-        <div class="${t.overdue ? "proof-bad" : "muted"}">Due ${fmtDT(t.deadline)} ${t.overdue ? "— " + rel(t.deadline) : ""}</div></div>
+        <div class="${t.overdue ? "proof-bad" : "muted"}">Due ${fmtDT(t.deadline)} ${t.overdue ? "- " + rel(t.deadline) : ""}</div></div>
       <div class="acts">
         ${t.status === "pending" || t.status === "escalated" ? html`<button class="btn big" data-st="in_progress" data-id="${t.id}">▶ Start</button>` : ""}
         <button class="btn big ok" data-st="done" data-id="${t.id}">✓ Done</button>
@@ -547,10 +652,10 @@ VIEWS.assistant = async (el) => {
       b.parentElement.innerHTML = b.dataset.fb === "1" ? `<span class="muted tiny">Thanks!</span>` : `<span class="muted tiny">Sent to your team lead.</span>`;
     } catch (e) { fail(e); }
   }));
-  if (!questions.length) add(html`<div class="bubble a">Hi ${S.me.name.split(" ")[0]} 👋 Ask me anything about how we work — error codes, approvals, forms, cut-offs. If the SOPs don't cover it, I'll pass it to your team lead.</div>`);
+  if (!questions.length) add(html`<div class="bubble a">Hi ${S.me.name.split(" ")[0]} - Ask about error codes, approvals, forms or cut-offs. If the SOPs do not cover it, the question goes to the team lead.</div>`);
   questions.slice().reverse().slice(-8).forEach((qq) => {
     add(html`<div class="bubble q">${qq.question}</div>`);
-    if (qq.status === "resolved") add(html`<div class="bubble a"><b>Answer from ${qq.resolved_by ? "your team lead" : "the lead"}:</b>\n${qq.lead_answer}<div class="muted tiny" style="margin-top:6px">Not in the SOPs yet — answered by hand ${fmtDT(qq.resolved_at)}</div></div>`);
+    if (qq.status === "resolved") add(html`<div class="bubble a"><b>Answer from ${qq.resolved_by ? "your team lead" : "the lead"}:</b>\n${qq.lead_answer}<div class="muted tiny" style="margin-top:6px">Not in the SOPs yet - answered by hand ${fmtDT(qq.resolved_at)}</div></div>`);
     else add(answerBubble({ ...qq, answer: qq.answer }));
   });
   const ask = async (text) => {
@@ -575,7 +680,7 @@ VIEWS["needs-lead"] = async (el, params) => {
   const r = await api("/api/sop/questions?status=" + status);
   const c = r.counts;
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>Needs lead</h1><p>Questions the SOPs could not answer. Answer them here — and use the list to see what is missing from the SOPs.</p></div>
+  <div class="page-head"><div class="grow"><h1>Needs lead</h1><p>Questions the SOPs could not answer. Answer them here - and use the list to see what is missing from the SOPs.</p></div>
     <div class="seg" id="qs">${[["needs_lead", `Waiting (${c.needs_lead || 0})`], ["resolved", `Answered by you (${c.resolved || 0})`], ["answered", `Answered by AI (${c.answered || 0})`], ["all", "All"]].map(([k, l]) => html`<button data-s="${k}" class="${k === status ? "on" : ""}">${l}</button>`)}</div></div>
   <div class="stack">${r.questions.length ? r.questions.map((q) => html`<div class="card">
     <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${avatar(q.asked_by || "?", q.user_id)}<div class="grow">
@@ -610,7 +715,7 @@ VIEWS.sops = async (el) => {
   ${docs.length ? "" : html`<div class="empty">No SOPs yet. Upload one above.</div>`}</div>`;
   $("#up").onsubmit = async (e) => {
     e.preventDefault(); const btn = $("button", e.target); btn.disabled = true; btn.textContent = "Indexing…";
-    try { const r = await api("/api/sop/docs", { method: "POST", body: new FormData(e.target) }); toast(`Indexed “${r.title}” — ${r.sections} sections`, "ok"); route(); }
+    try { const r = await api("/api/sop/docs", { method: "POST", body: new FormData(e.target) }); toast(`Indexed “${r.title}” - ${r.sections} sections`, "ok"); route(); }
     catch (er) { fail(er); btn.disabled = false; btn.textContent = "⬆ Upload and index"; }
   };
   $$("[data-del]", el).forEach((b) => (b.onclick = async () => { if (!confirm("Remove this SOP? The assistant will stop using it.")) return; await api(`/api/sop/docs/${b.dataset.del}`, { method: "DELETE" }).catch(fail); route(); }));
@@ -640,7 +745,7 @@ VIEWS.vault = async (el) => {
     <p>Encrypted at rest (AES-256). You can see: <span class="pill accent">${meta.scope}</span> · every open, download and search is logged.</p></div>
     ${meta.can_upload ? html`<button class="btn primary" id="upb">⬆ Upload document</button>` : ""}</div>
   <div class="card" style="margin-bottom:16px">
-    <div class="row"><input class="input grow" id="vq" placeholder="Search inside documents — including scanned images, e.g.  relocation bonus" style="font-size:16px;padding:12px">
+    <div class="row"><input class="input grow" id="vq" placeholder="Search inside documents - including scanned images, e.g.  relocation bonus" style="font-size:16px;padding:12px">
       <button class="btn primary big" id="vgo">🔎 Search</button></div>
     <div id="vres"></div>
   </div>
@@ -658,7 +763,7 @@ VIEWS.vault = async (el) => {
     $("#vtb").innerHTML = rows.map((d) => html`<tr class="click" data-doc="${d.id}"><td class="muted">${d.id}</td><td><b>${d.employee_name}</b><div class="muted tiny">${d.employee_id} · ${d.department}</div></td>
       <td>${typePill(d)}</td><td>${d.original_name} ${d.ocr_used ? html`<span class="pill info" title="Text read with OCR">scan · OCR</span>` : ""}</td>
       <td class="small">${fmtDT(d.uploaded_at)}<div class="muted tiny">${d.uploaded_by_name || ""}</div></td>
-      <td class="small">${d.retention_until ? html`<span class="${d.retention_expired ? "pill bad" : "muted"}">${d.retention_until}</span>` : "—"}</td></tr>`.s).join("")
+      <td class="small">${d.retention_until ? html`<span class="${d.retention_expired ? "pill bad" : "muted"}">${d.retention_until}</span>` : "-"}</td></tr>`.s).join("")
       || `<tr><td colspan="6" class="empty">No documents you can see.</td></tr>`;
     $$("#vtb [data-doc]").forEach((r) => (r.onclick = () => openDoc(+r.dataset.doc, meta)));
   };
@@ -708,7 +813,7 @@ function uploadForm(meta) {
   const inp = $("[name=employee_id]", ov);
   inp.oninput = async () => {
     const r = await api("/api/vault/employees?qs=" + encodeURIComponent(inp.value)).catch(() => ({ employees: [] }));
-    $("#emps", ov).innerHTML = r.employees.map((e) => `<option value="${esc(e.employee_id)}">${esc(e.name)} — ${esc(e.department)}</option>`).join("");
+    $("#emps", ov).innerHTML = r.employees.map((e) => `<option value="${esc(e.employee_id)}">${esc(e.name)} - ${esc(e.department)}</option>`).join("");
   };
   inp.oninput();
   $("#vu", ov).onsubmit = async (e) => {
@@ -734,7 +839,7 @@ async function openDoc(id, meta) {
   const src = `/api/vault/docs/${id}/file`;
   const preview = d.mime.startsWith("image/") ? html`<img src="${src}" style="max-width:100%;border:1px solid var(--line);border-radius:8px">`
     : d.mime === "application/pdf" ? html`<iframe src="${src}" style="width:100%;height:520px;border:1px solid var(--line);border-radius:8px"></iframe>`
-    : html`<div class="muted">No preview for this file type — see the text on the right or download it.</div>`;
+    : html`<div class="muted">No preview for this file type - see the text on the right or download it.</div>`;
   const canEdit = meta.can_upload;
   const ov = modal(html`<div class="modal-head"><h2>#${d.id} · ${d.original_name}</h2><button class="x" data-close>×</button></div>
     <div class="grid g2">
@@ -748,7 +853,7 @@ async function openDoc(id, meta) {
         ${canEdit ? html`<div><div class="muted small">Keep until</div><input class="input" type="date" id="ret" value="${d.retention_until || ""}"></div>` : ""}
         <div><div class="muted small">Text ${d.ocr_used ? "(read by OCR from the scan)" : ""}</div>
           <div class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--soft);padding:10px;border-radius:8px">${raw(highlight(r.text || "(no text)", lastSearch))}</div></div>
-        <div class="row"><a class="btn primary" href="${src}?download=true">⬇ Download (watermarked)</a>${canEdit ? html`<button class="btn danger" id="delr">Request deletion</button>` : ""}</div>
+        <div class="row"><a class="btn primary" href="${src}?download=true">Download watermarked copy</a>${canEdit ? html`<button class="btn danger" id="delr">Request deletion</button>` : ""}</div>
         <div class="muted tiny">Opening this document was recorded in the audit log.</div>
       </div></div>`.s, { wide: true });
   if (canEdit) {
@@ -756,7 +861,7 @@ async function openDoc(id, meta) {
     $("#ret", ov).onchange = async (e) => { try { await api(`/api/vault/docs/${id}`, { method: "PATCH", body: { retention_until: e.target.value } }); toast("Retention saved", "ok"); } catch (er) { fail(er); } };
     $("#delr", ov).onclick = async () => {
       const reason = prompt("Why should this document be deleted? A second administrator must approve."); if (reason === null) return;
-      try { await api(`/api/vault/docs/${id}/delete-request`, { method: "POST", body: { reason } }); toast("Deletion requested — waiting for a second approver", "ok"); } catch (er) { fail(er); }
+      try { await api(`/api/vault/docs/${id}/delete-request`, { method: "POST", body: { reason } }); toast("Deletion requested - waiting for a second approver", "ok"); } catch (er) { fail(er); }
     };
   }
   ov._onClose = () => { if (location.hash.startsWith("#/vault")) route(); };
@@ -776,7 +881,7 @@ VIEWS.audit = async (el, params) => {
       <table class="t"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Doc</th><th>Detail</th></tr></thead>
       <tbody>${r.entries.map((e) => html`<tr class="${e.outcome === "denied" ? "hl" : ""}"><td class="small">${fmtDT(e.at)}</td><td><b>${e.username}</b><div class="muted tiny">${e.role}</div></td>
         <td><span class="pill ${e.outcome === "denied" ? "bad" : e.action === "download" ? "warn" : e.action === "upload" ? "ok" : ""}">${e.outcome === "denied" ? "DENIED " : ""}${e.action}</span></td>
-        <td>${e.doc_id ? "#" + e.doc_id : "—"}</td><td class="small mono" style="max-width:320px;word-break:break-word">${e.detail || ""}</td></tr>`)}</tbody></table>
+        <td>${e.doc_id ? "#" + e.doc_id : "-"}</td><td class="small mono" style="max-width:320px;word-break:break-word">${e.detail || ""}</td></tr>`)}</tbody></table>
     </div>
     <div class="card"><h2>🔬 What is on disk?</h2>
       <p class="muted small">Pick a document to compare the stored file with the original. The stored file is AES-256-GCM ciphertext.</p>
@@ -790,7 +895,7 @@ VIEWS.audit = async (el, params) => {
     $("#spout").innerHTML = html`<div class="stack small">
       <div><b>Stored on disk</b> <span class="muted">(${p.path_on_disk}, ${p.stored_bytes} bytes)</span><div class="hex">${p.disk_head_hex}</div><div class="hex" style="margin-top:4px">${p.disk_head_text}</div></div>
       <div><b>Original after decryption</b> <span class="muted">(${p.original_bytes} bytes)</span><div class="hex plain">${p.original_head_hex}</div><div class="hex plain" style="margin-top:4px">${p.original_head_text}</div></div>
-      <div class="alert ok">Entropy ${p.entropy_bits_per_byte} bits/byte (8.0 = random) · ${Math.round(p.printable_ratio * 100)}% printable · integrity check ${p.sha256_matches ? "✔" : "✖"}<br>${p.cipher}. Master key fingerprint <code>${p.key_fingerprint}</code> — the key lives outside the code and database.</div></div>`.s;
+      <div class="alert ok">Entropy ${p.entropy_bits_per_byte} bits/byte (8.0 = random) · ${Math.round(p.printable_ratio * 100)}% printable · integrity check ${p.sha256_matches ? "✔" : "✖"}<br>${p.cipher}. Master key fingerprint <code>${p.key_fingerprint}</code> - the key lives outside the code and database.</div></div>`.s;
   };
 };
 
@@ -814,8 +919,8 @@ VIEWS.interviews = async (el, params) => {
     <tbody>${b.interviews.filter((i) => !filt || i.board_status === filt).map((i) => html`<tr class="${i.board_status === "feedback_pending" ? "hl" : ""}">
       <td><b>${i.candidate_name}</b><div class="muted tiny">${i.candidate_email} · recruiter ${i.recruiter_name}</div></td>
       <td>${i.role_title}<div class="muted tiny">${i.round_name}${i.length_min ? ` · ${i.length_min} min` : ""}</div></td>
-      <td>${i.interviewer_name || "—"}</td>
-      <td class="small">${i.start ? fmtDT(i.start) : "—"}${i.reschedule_count ? html`<div class="muted tiny">rescheduled ${i.reschedule_count}×</div>` : ""}</td>
+      <td>${i.interviewer_name || "-"}</td>
+      <td class="small">${i.start ? fmtDT(i.start) : "-"}${i.reschedule_count ? html`<div class="muted tiny">rescheduled ${i.reschedule_count}×</div>` : ""}</td>
       <td><span class="pill ${IVS[i.board_status][1]}">${IVS[i.board_status][0]}</span></td>
       <td class="num" style="white-space:nowrap">
         ${i.board_status === "invited" || i.board_status === "scheduled" || i.board_status === "rescheduled" ? html`<button class="btn sm" data-copy="${i.link}">🔗 Link</button>` : ""}
@@ -870,7 +975,7 @@ async function showFeedback(cid, name) {
   try {
     const r = await api(`/api/iv/candidates/${cid}/feedback`);
     modal(html`<div class="modal-head"><h2>Feedback · ${name}</h2><button class="x" data-close>×</button></div>
-      ${r.locked ? html`<div class="alert warn">🔒 ${r.hidden} colleague(s) have submitted feedback. Submit your own first — then you can see theirs. This keeps every opinion independent.</div>`
+      ${r.locked ? html`<div class="alert warn">🔒 ${r.hidden} colleague(s) have submitted feedback. Submit your own first - then you can see theirs. This keeps every opinion independent.</div>`
         : r.feedback.length ? html`<table class="t"><thead><tr><th>Interviewer</th><th class="num">Comm.</th><th class="num">Technical</th><th class="num">Problem solving</th><th class="num">Culture fit</th><th>Recommendation</th></tr></thead>
         <tbody>${r.feedback.map((f) => html`<tr><td><b>${f.interviewer_name}</b><div class="muted tiny">${f.round_name}</div><div class="small">${f.comments}</div></td>
           <td class="num">${f.communication}</td><td class="num">${f.technical}</td><td class="num">${f.problem_solving}</td><td class="num">${f.culture_fit}</td>
@@ -892,7 +997,7 @@ VIEWS["my-interviews"] = async (el) => {
     ${i.board_status === "feedback_pending" ? html`<button class="btn primary" data-give="${i.id}">Give feedback</button>` : ""}
     ${i.board_status === "completed" ? html`<button class="btn sm" data-see="${i.candidate_id}" data-name="${i.candidate_name}">Panel feedback</button>` : ""}</div>`;
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>My interviews</h1><p>Times in IST. Give feedback right after each interview — it's 4 ratings, a recommendation and a comment.</p></div><a class="btn" href="#/availability">🕒 Add availability</a></div>
+  <div class="page-head"><div class="grow"><h1>My interviews</h1><p>Times in IST. Give feedback right after each interview - it's 4 ratings, a recommendation and a comment.</p></div><a class="btn" href="#/availability">🕒 Add availability</a></div>
   ${pending.length ? html`<div class="alert warn" style="margin-bottom:14px"><b>${pending.length} interview(s) waiting for your feedback.</b></div>` : ""}
   <div class="stack">${pending.map(row)}</div>
   <h2 style="margin-top:22px">Upcoming</h2><div class="stack">${upcoming.length ? upcoming.map(row) : html`<div class="card empty">No upcoming interviews.</div>`}</div>
@@ -955,13 +1060,13 @@ VIEWS.proof = async (el) => {
   const canRun = ["lead", "admin"].includes(S.me.role);
   const canRace = ["hr", "admin"].includes(S.me.role);
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>How we know it works</h1><p>Live checks of the claims this app makes — run them yourself.</p></div></div>
+  <div class="page-head"><div class="grow"><h1>How we know it works</h1><p>Live checks of the claims this app makes - run them yourself.</p></div></div>
   <div class="grid g2">
     <div class="card"><div class="section-title"><h2>💬 SOP assistant test</h2><span class="grow"></span>${canRun ? html`<button class="btn primary" id="run">▶ Run test questions</button>` : ""}</div>
       <div id="evbox">${evalBox(ev)}</div></div>
     <div class="stack">
-      <div class="card"><h2>🤖 Local AI</h2><p>${p.ai.online ? html`<span class="proof-ok">Online</span> — model <code>${p.ai.model}</code> served by Ollama at <code>${p.ai.url}</code>. No question or document leaves this machine.`
-        : html`<span class="proof-bad">Offline</span> — ${p.ai.detail}. The assistant still answers by quoting the best SOP section.`}</p>
+      <div class="card"><h2>🤖 Local AI</h2><p>${p.ai.online ? html`<span class="proof-ok">Online</span> - model <code>${p.ai.model}</code> served by Ollama at <code>${p.ai.url}</code>. No question or document leaves this machine.`
+        : html`<span class="proof-bad">Offline</span> - ${p.ai.detail}. The assistant still answers by quoting the best SOP section.`}</p>
         <p class="muted small">${p.sop_sections} SOP sections indexed · ${p.gaps} open SOP gaps</p></div>
       <div class="card"><h2>🔐 Vault</h2><p>${p.vault_docs} documents stored encrypted (AES-256-GCM, one key per file, wrapped by a master key kept outside the code). ${p.scans} are scans made searchable with Tesseract OCR.</p>
         <p>Audit chain: ${p.audit_chain.ok ? html`<span class="proof-ok">✔ intact (${p.audit_chain.entries} entries)</span>` : html`<span class="proof-bad">✖ broken</span>`}</p>
@@ -982,7 +1087,7 @@ VIEWS.proof = async (el) => {
     try {
       const r = await api("/api/iv/demo/race", { method: "POST" });
       $("#raceout").innerHTML = html`<div class="alert ${r.bookings_made === 1 ? "ok" : "bad"}"><b>${r.bookings_made === 1 ? "✔ Only one booking was made." : "✖ Double booking!"}</b><br>
-        ${r.results.map((x) => html`${x.who}: ${x.ok ? "booked" : "refused — " + x.message}<br>`)}<span class="tiny">Slot ${r.slot}. The test booking was removed afterwards.</span></div>`.s;
+        ${r.results.map((x) => html`${x.who}: ${x.ok ? "booked" : "refused - " + x.message}<br>`)}<span class="tiny">Slot ${r.slot}. The test booking was removed afterwards.</span></div>`.s;
     } catch (e) { fail(e); }
   };
 };
@@ -1002,7 +1107,7 @@ function evalBox(ev) {
 // the same API the product uses - nothing here is staged for the demo.
 const DEMO_STEPS = [
   {
-    id: "numbers", icon: "📊", go: "overview",
+    id: "numbers", icon: "", go: "overview",
     title: "The whole shift on one screen",
     why: "Today a lead hands out work over chat and a spreadsheet, so nobody can see the total load and the same two people get everything. These figures are counted from the database on every page load, not typed into a slide.",
     cta: "Show the numbers",
@@ -1019,20 +1124,20 @@ const DEMO_STEPS = [
     },
   },
   {
-    id: "answer", icon: "💬", go: "assistant",
+    id: "answer", icon: "", go: "assistant",
     title: "A question answered from the SOP, with its source",
     why: "The assistant answers only from your SOP documents, and always shows the section it used. No source, no answer.",
     cta: "Ask: what do I do when error 402 appears?",
     run: async () => demoAnswer(await api("/api/sop/ask", { method: "POST", body: { question: "What do I do when error 402 appears?" } })),
   },
   {
-    id: "honest", icon: "🙋", go: "needs-lead",
+    id: "honest", icon: "", go: "needs-lead",
     title: "It admits what it does not know",
-    why: "The failure that kills trust in an assistant is a confident wrong answer. If no SOP section covers the question, it refuses and puts the question in the lead's queue — which is also your to-do list for writing the missing SOP.",
+    why: "The failure that kills trust in an assistant is a confident wrong answer. If no SOP section covers the question, it refuses and puts the question in the lead's queue - which is also your to-do list for writing the missing SOP.",
     cta: "Ask something the SOPs do not cover",
     run: async () => {
       const r = await api("/api/sop/ask", { method: "POST", body: { question: "What is the office Wi-Fi password?" } });
-      return html`${demoAnswer(r)}<p class="tiny muted">Open <a href="#/needs-lead">Needs lead</a> — it is sitting there now.</p>`;
+      return html`${demoAnswer(r)}<p class="tiny muted">Open <a href="#/needs-lead">Needs lead</a> - it is sitting there now.</p>`;
     },
   },
   {
@@ -1046,7 +1151,7 @@ const DEMO_STEPS = [
     },
   },
   {
-    id: "vault", icon: "🔐", go: "vault", role: ["admin"],
+    id: "vault", icon: "", go: "vault", role: ["admin"],
     title: "The vault is encrypted on disk, not just in the docs",
     why: "HR files are the most sensitive thing in the building. Each file is AES-256-GCM with its own key, wrapped by a master key kept outside the database and the code. This button reads the stored file and shows you the bytes.",
     cta: "Show me the ciphertext",
@@ -1062,7 +1167,7 @@ const DEMO_STEPS = [
     },
   },
   {
-    id: "race", icon: "⚡", go: "interviews", role: ["hr", "admin"],
+    id: "race", icon: "", go: "interviews", role: ["hr", "admin"],
     title: "Two candidates, one slot, one booking",
     why: "The failure mode of every booking page is the double booking. Two real concurrent requests are fired at the same slot through separate threads; the database transaction and a unique index let exactly one through.",
     cta: "Fire both bookings at once",
@@ -1070,12 +1175,12 @@ const DEMO_STEPS = [
       const r = await api("/api/iv/demo/race", { method: "POST" });
       return html`<div class="alert ${r.bookings_made === 1 ? "ok" : "bad"}" style="margin-top:10px">
         <b>${r.bookings_made === 1 ? "✔ Only one booking was made." : "✖ Double booking!"}</b><br>
-        ${r.results.map((x) => html`${x.who}: ${x.ok ? "booked" : "refused — " + x.message}<br>`)}
+        ${r.results.map((x) => html`${x.who}: ${x.ok ? "booked" : "refused - " + x.message}<br>`)}
         <span class="tiny">Slot ${r.slot}. The test booking was removed afterwards.</span></div>`;
     },
   },
   {
-    id: "eval", icon: "✅", go: "proof", role: ["lead", "admin"],
+    id: "eval", icon: "", go: "proof", role: ["lead", "admin"],
     title: "The claim, measured",
     why: "Ten questions with known correct answers: five answerable, three that must be refused, two in Hindi and Gujarati. This is the same script that runs in the test suite, so the number cannot quietly drift.",
     cta: "Run all ten questions",
@@ -1108,7 +1213,7 @@ VIEWS.demo = async (el) => {
   const hidden = DEMO_STEPS.length - steps.length;
   el.innerHTML = html`
   <div class="page-head"><div class="grow"><h1>Judge demo</h1>
-    <p>${steps.length} steps, about three minutes. Every button runs the real thing against the real database — nothing on this page is staged.</p></div></div>
+    <p>${steps.length} steps, about three minutes. Every button runs the real thing against the real database - nothing on this page is staged.</p></div></div>
   <div class="stack">
     ${steps.map((s, i) => html`<div class="card demo-step">
       <div class="demo-row">
@@ -1124,7 +1229,7 @@ VIEWS.demo = async (el) => {
         </div>
       </div></div>`)}
     <div class="card"><p class="muted small" style="margin:0">Signed in as <b>${S.me.name}</b> (${S.me.role_label}).
-      ${hidden ? html`${hidden} step${hidden === 1 ? "" : "s"} appear for other roles — use the person switcher at the top right.` : ""}
+      ${hidden ? html`${hidden} step${hidden === 1 ? "" : "s"} appear for other roles - use the person switcher at the top right.` : ""}
       The full written case is in <code>docs/HACKATHON_PLAYBOOK.md</code>.</p></div>
   </div>`;
   $$("[data-run]").forEach((b) => (b.onclick = async () => {

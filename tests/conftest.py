@@ -62,3 +62,13 @@ def admin(seeded):
 @pytest.fixture(scope="session")
 def hr(seeded):
     return _client("hr1")
+
+
+@pytest.fixture(scope="session")
+def tester(seeded):
+    return _client("tester")
+
+
+@pytest.fixture(scope="session")
+def developer(seeded):
+    return _client("dev")

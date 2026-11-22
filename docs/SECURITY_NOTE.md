@@ -52,6 +52,9 @@ Note the distinction — a **scope** denial (a document that exists but is outsi
 **role-gate** refusal (a page your role may not open at all) returns `403` and is not audited, since nothing in the vault
 was touched.
 
+Task history follows the task-board boundary too: leads and admins can view any history; members can view only tasks
+assigned to them. HR and interviewer roles are denied.
+
 Demonstrating a denial is built in: sign in as `hr1` and open a document belonging to another department, or search for a
 phrase that exists only in that document. Both return nothing, and both appear in the audit log as denied.
 
@@ -110,8 +113,17 @@ In rough priority order:
 ## Already implemented beyond the minimum
 
 - Retention dates per document.
+- Expired documents remain listed with an expiry marker, but content, file, ciphertext-proof and search access are
+  denied; HR/admin can renew retention or request deletion.
 - Watermarked downloads.
 - Two-person approval for deletion.
 - Hash-chained, append-only audit log with engine-level triggers.
 - Denied attempts recorded as first-class audit events.
 - Per-file key rotation on re-upload, forced by content hashing (`sha256`) on every document.
+
+## Team forum and demo accounts
+
+The team forum is available to every signed-in account. Forum posts and replies are visible to all forum users; it is
+not a private-message system. The `tester` and `developer` demo roles are restricted server-side to forum and auth
+endpoints. Demo accounts share `DEMO_PASSWORD`, which the demo persona helper returns while `DEMO_MODE=1`. Set both
+`DEMO_MODE=0` and `SEED_DEMO=0` outside a local/demo environment.
