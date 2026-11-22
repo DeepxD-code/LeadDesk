@@ -55,6 +55,62 @@ def test_answerable_question_cites_a_source(lead):
         assert body["sources"], "an answer must always show where it came from"
 
 
+# ---------------------------------------------------------------- multilingual + retrieval
+
+def test_lexicon_maps_domain_words_and_keeps_codes():
+    from app.lexicon import lexicon_to_english
+
+    out = lexicon_to_english("त्रुटि 402 आने पर मुझे क्या करना चाहिए?")
+    assert "402" in out, "an error code must survive translation untouched"
+    assert "error" in out
+    assert not any("\u0900" <= ch <= "\u097F" for ch in out), "no Devanagari should be left behind"
+
+
+def test_coverage_reports_unmapped_words():
+    from app.lexicon import coverage
+
+    assert coverage("त्रुटि 402") > 0
+    assert coverage("plain english question") == 1.0
+    # a question full of words we do not know must look low-coverage, not confident
+    assert coverage("ज़ेब्रा क्वासर प्लेटिपस") < 1.0
+
+
+def test_hindi_question_is_answered_from_an_english_sop(lead):
+    """The brief lists Hindi as a bonus; a cold machine with no model must still answer."""
+    r = lead.post("/api/sop/ask", json={"question": "त्रुटि 402 आने पर मुझे क्या करना चाहिए?"}).json()
+    assert r["status"] == "answered", r
+    assert r["language"] == "hi"
+    assert r["sources"], "an answer must always cite a source"
+    assert "Error Code Guide" in r["sources"][0]["doc"]
+
+
+def test_gujarati_question_is_answered_from_an_english_sop(lead):
+    r = lead.post("/api/sop/ask", json={"question": "₹10,000 થી વધુ રિફંડ કોણ મંજૂર કરે છે?"}).json()
+    assert r["status"] == "answered", r
+    assert r["language"] == "gu"
+    assert "Claims and Payments SOP" in r["sources"][0]["doc"]
+    assert "Refund" in r["sources"][0]["section"]
+
+
+def test_heading_breaks_a_near_tie_between_similar_sections(lead):
+    """'which form' must reach the policy titled 'Duplicate payments', not the
+    'Duplicate record' error entry that merely mentions the form in passing."""
+    r = lead.post("/api/sop/ask", json={"question": "Which form is used for a duplicate payment?"}).json()
+    assert r["status"] == "answered", r
+    assert "Claims and Payments SOP" in r["sources"][0]["doc"], r["sources"]
+    assert "Duplicate payments" in r["sources"][0]["section"], r["sources"]
+
+
+def test_admin_can_run_the_eval_in_app(lead):
+    """The 'How we know it works' button hits this route; it must exist and score."""
+    r = lead.post("/api/sop/eval")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["answerable_total"] >= 5
+    assert body["answerable_passed"] >= 4, "the brief asks for at least 4 of 5 with a source"
+    assert body["gaps_caught"] == body["gaps_total"]
+
+
 # ---------------------------------------------------------------- vault
 
 def test_hr_scope_is_limited_to_their_department(hr):

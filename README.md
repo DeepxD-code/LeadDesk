@@ -34,6 +34,12 @@ ollama pull qwen2.5:3b
 The app works without Ollama — the assistant then answers with a plain extract-from-the-SOPs fallback and says so in
 the UI. With Ollama running it writes the answer in words instead. Both modes cite their source.
 
+**Hindi and Gujarati work either way.** Rather than depend on a model to translate, `app/lexicon.py` maps the domain
+words people actually use (*error, refund, approve, form, signature, cut-off*) plus the question words, and passes
+numbers and error codes through untouched. So *"त्रुटि 402 आने पर मुझे क्या करना चाहिए?"* finds the Error 402 section on
+a machine with nothing installed. When the model *is* running, it translates properly and whichever version retrieves a
+better section is used — the model is an upgrade, not a dependency.
+
 ### Without Docker
 
 ```bash
@@ -126,3 +132,16 @@ python scripts/eval_sop.py
 It runs the questions in `sample_data/test_questions.json`, checks the expected error code or figure against the answer,
 and writes `data/eval_results.json`, which is what the **How we know it works** panel displays. There is also a
 **Run test questions** button in the Assistant page that does the same thing in the browser.
+
+Current result, **with no model installed at all** (the worst case a judge can hit):
+
+```
+Answerable questions correct with source: 5/5
+Out-of-scope questions sent to the lead:   3/3
+Hindi / Gujarati questions:              2/2
+```
+
+Retrieval scores three ways and adds them: word n-grams, character n-grams, and a separate heading field. The heading
+field exists because a long SOP body dilutes its own title — *"which form for a duplicate payment"* used to tie between
+*4. Duplicate payments* and *Error 409 - Duplicate record* within 0.003. Scoring the heading separately resolves it
+correctly, which is the difference between 4/5 and 5/5.

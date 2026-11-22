@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from . import llm
+from . import lexicon, llm
 from .auth import current_user, require
 from .db import DATA_DIR, ex, notify, now_s, q, q1, tx
 
@@ -211,22 +211,30 @@ class SopIndex:
     def __init__(self):
         self.lock = threading.Lock()
         self.chunks = []
-        self.word = self.char = None
-        self.Xw = self.Xc = None
+        self.word = self.char = self.title = None
+        self.Xw = self.Xc = self.Xt = None
 
     def rebuild(self):
         with self.lock:
             self.chunks = q("""SELECT c.id, c.section, c.text, c.doc_id, d.title AS doc_title, d.filename
                                FROM sop_chunks c JOIN sop_docs d ON d.id=c.doc_id ORDER BY c.doc_id, c.ord""")
             if not self.chunks:
-                self.word = self.char = None
+                self.word = self.char = self.title = None
                 return
             corpus = [normalize(f"{c['doc_title']}. {c['section']}. {c['section']}. {c['text']}") for c in self.chunks]
+            # Headings are a separate, short field. A long body dilutes its own heading,
+            # so "which form for a duplicate payment" used to score a tie between
+            # "4. Duplicate payments" and "Error 409 - Duplicate record". The heading
+            # field is what breaks that tie correctly.
+            headings = [normalize(f"{c['doc_title']} {c['section']}") for c in self.chunks]
             self.word = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True, stop_words="english",
                                         token_pattern=r"(?u)\b\w+\b")
             self.char = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True)
+            self.title = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True, stop_words="english",
+                                         token_pattern=r"(?u)\b\w+\b")
             self.Xw = self.word.fit_transform(corpus)
             self.Xc = self.char.fit_transform(corpus)
+            self.Xt = self.title.fit_transform(headings)
 
     def search(self, question: str, k=4):
         with self.lock:
@@ -235,7 +243,8 @@ class SopIndex:
             qn = normalize(question)
             sw = (self.Xw @ self.word.transform([qn]).T).toarray().ravel()
             sc = (self.Xc @ self.char.transform([qn]).T).toarray().ravel()
-            score = 0.65 * sw + 0.35 * sc
+            st = (self.Xt @ self.title.transform([qn]).T).toarray().ravel()
+            score = 0.55 * sw + 0.25 * sc + 0.20 * st
             # Exact codes/numbers in the question (error 402, form PR-07) are strong signals.
             codes = extract_codes(qn)
             if codes:
@@ -319,15 +328,36 @@ def answer_question(question: str):
     lang = detect_language(question)
     st = llm.status()
     english = question
+
     if lang != "en":
-        if not st["online"]:
-            return dict(answer=None, sources=[], status="needs_lead", top_score=0.0, mode="gate",
-                        language=lang, english=question,
-                        reason="Questions in Hindi or Gujarati need the local AI model, which is offline right now.")
-        english = to_english(question, lang)
-    hits, codes = INDEX.search(english)
+        # Two routes to English: the deterministic lexicon always works, the model
+        # translates better when it is running. Whichever retrieves a better section
+        # wins, so the assistant never stalls just because no model is installed.
+        variants = [("lexicon", lexicon.lexicon_to_english(question))]
+        if st["online"]:
+            try:
+                model_version = to_english(question, lang)
+                if model_version and model_version.strip():
+                    variants.insert(0, ("model", model_version))
+            except Exception:  # noqa: BLE001 - fall back to the lexicon
+                pass
+        best = None
+        for how, eng in variants:
+            h, c = INDEX.search(eng)
+            s = h[0]["score"] if h else 0.0
+            if best is None or s > best[0]:
+                best = (s, how, eng, h, c)
+        _, translated_by, english, hits, codes = best
+    else:
+        translated_by = None
+        hits, codes = INDEX.search(english)
+
     top = hits[0]["score"] if hits else 0.0
     base = dict(language=lang, english=english, top_score=round(top, 3))
+    if lang != "en":
+        base["translated_by"] = translated_by
+        base["understood"] = lexicon.mapped_terms(question) if translated_by == "lexicon" else []
+        base["coverage"] = lexicon.coverage(question)
 
     # Gate: weak match, or an error code / form number that the best section does not mention.
     code_missing = bool(codes) and bool(hits) and not any(
@@ -339,7 +369,9 @@ def answer_question(question: str):
 
     use = [h for h in hits if h["score"] >= max(MIN_SCORE, 0.6 * top)][:3]
     if not st["online"]:
-        return _extractive(base, use, lang)
+        return _extractive(base, use, lang,
+                           note="The SOPs are in English, so the matching section is quoted as written.\n"
+                           if lang != "en" else "")
     prompt = f"SOP excerpts:\n\n{_context_block(use)}\n\nQuestion: {english}"
     try:
         raw = llm.chat(SYSTEM_PROMPT, prompt, json_mode=True)
