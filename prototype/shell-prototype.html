@@ -17,6 +17,8 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--ink);
     font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif}
+  body.compact .row{padding:7px 14px}
+  body.compact .row .ttl{font-size:13px}
 
   /* ---------- prototype chrome, not part of the design ---------- */
   .proto{position:fixed;inset:0 0 auto 0;height:46px;z-index:100;display:flex;align-items:center;gap:6px;
@@ -39,7 +41,6 @@
   .plate svg{width:34px;height:34px;flex:none}
   .plate .word{font-weight:800;font-size:19px;letter-spacing:-.5px;color:var(--accent);line-height:1}
   .plate .sub{font-size:7.5px;letter-spacing:.2em;color:#7b7a76;margin-top:4px;text-transform:uppercase}
-
   .nav{flex:1;overflow:auto;padding:0 10px 12px}
   .nav::-webkit-scrollbar{width:8px}
   .nav::-webkit-scrollbar-thumb{background:#2a2a33;border-radius:8px}
@@ -48,13 +49,13 @@
     color:var(--muted-rail);font:inherit;font-size:10px;letter-spacing:.15em;text-transform:uppercase;
     padding:7px 8px}
   .hd:hover{color:#b9b9c2}
-  .hd .chev{transition:transform .16s ease}
-  .grp.closed .chev{transform:rotate(-90deg)}
+  .hd .chev{transition:transform .16s ease;display:flex}
+  .hd .chev svg{transition:transform .16s ease}
+  .grp.closed .hd .chev svg{transform:rotate(-90deg)}
   .grp.closed .items{display:none}
   .hd .at{width:6px;height:6px;border-radius:50%;background:var(--accent-rail);margin-left:auto}
   .grp.closed .hd .at{display:block}
   .grp:not(.closed) .hd .at{display:none}
-
   .item{position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
     color:#b9b9c2;font-size:13px;cursor:pointer;user-select:none}
   .item svg{width:16px;height:16px;flex:none;opacity:.85}
@@ -143,12 +144,10 @@
     align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;
     padding:11px 14px;margin-bottom:8px;cursor:pointer}
   .row:hover{border-color:#ccd7e6;box-shadow:0 3px 10px rgba(20,30,50,.07)}
-  body.compact .row{padding:7px 14px}
   .p{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#fff;
     font-size:10.5px;font-weight:700;letter-spacing:.02em}
   .p1{background:#c2455f}.p2{background:#b7791f}.p3{background:#3f6fa8}.p4{background:#8a8a92}
   .ttl{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  body.compact .ttl{font-size:13px}
   .code{color:var(--muted);font-weight:600;margin-right:7px;font-variant-numeric:tabular-nums}
   .meta{font-size:11.5px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .st{display:flex;align-items:center;gap:6px;font-size:12.5px}
@@ -220,19 +219,7 @@
   .menu button:hover{background:#f4f1ea}
   .menu .hr{height:1px;background:var(--line);margin:5px 4px}
 
-  @media (max-width:1180px){
-    .app{grid-template-columns:60px minmax(0,1fr)}
-    .plate{margin:10px 8px;padding:8px;justify-content:center}
-    .plate .word,.plate .sub{display:none}
-    .item .lbl,.item .badge,.hd span.t,.proj span.t,.foot .nm,.foot .sh,.toggle,.proj .n{display:none}
-    .grp{border-top:1px solid var(--rail-line);padding-top:2px;margin-top:4px}
-    .hd{justify-content:center;padding:8px 0}
-    .item,.proj a{justify-content:center}
-    .foot{justify-content:center}
-    .row{grid-template-columns:30px minmax(0,1fr) 120px}
-    .row .st,.row .when{display:none}
-  }
-  /* ---------- phone drawer ---------- */
+  /* ---------- drawer ---------- */
   .phonebtn{display:none}
   .drawer{position:fixed;top:46px;left:0;bottom:0;width:82vw;max-width:380px;background:var(--rail);
     z-index:55;transform:translateX(-110%);transition:transform .22s ease;overflow:auto;padding:6px 10px 20px;
@@ -267,21 +254,17 @@
 </style>
 </head>
 <body>
-
 <div class="proto">
   <b>Tilted Lads · prototype</b>
   <span>Sign in as:</span>
   <button data-role="member">Member</button>
   <button data-role="lead">Team lead</button>
   <button data-role="hr">HR</button>
-  <button data-role="admin">Admin</button>
-  <button data-role="interviewer">Interviewer</button>
   <button data-role="forum">Forum only</button>
   <span class="sep"></span>
   <button id="density">Density: comfortable</button>
   <span class="hint">Placeholder data · this bar is not part of the design</span>
 </div>
-
 <div class="app" id="app"></div>
 <div class="scrim" id="scrim"></div>
 <div class="panel" id="panel"></div>
@@ -291,9 +274,7 @@
   <div class="hr"></div>
   <button>Sign out</button>
 </div>
-
 <script>
-/* ------------------------------------------------------------------ icons */
 const I = {
   home:'<path d="M2.5 7.5 8 2.5l5.5 5V13a.5.5 0 0 1-.5.5H9.5v-4h-3v4H3a.5.5 0 0 1-.5-.5z"/>',
   check:'<path d="M3 8.6 6.4 12 13 4.6"/>',
@@ -314,9 +295,8 @@ const I = {
   clock:'<circle cx="8" cy="8" r="5.4"/><path d="M8 5v3.2l2 1.2"/>',
   chev:'<path d="M6 4.2 9.8 8 6 11.8"/>'
 };
-const svg = (n, s=16) => `<svg viewBox="0 0 16 16" width="${s}" height="${s}" fill="none"
+const svg = (n, s) => `<svg viewBox="0 0 16 16" width="${s||16}" height="${s||16}" fill="none"
   stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${I[n]||''}</svg>`;
-
 const brandMark = `<svg viewBox="0 0 40 40" width="34" height="34">
   <circle cx="20" cy="20" r="18" fill="#f4f7fb" stroke="#dbe5f2"/>
   <path d="M20 7c5 3 8 6 8 11 0 4-3 7-8 9-5-2-8-5-8-9 0-5 3-8 8-11z" fill="none" stroke="#315d98" stroke-width="1.8"/>
@@ -324,158 +304,301 @@ const brandMark = `<svg viewBox="0 0 40 40" width="34" height="34">
   <circle cx="20" cy="20" r="2.6" fill="#315d98"/>
 </svg>`;
 
-/* ------------------------------------------------------------------ role data */
-const ROLES = {
-  member: {
-    name:'Meera Iyer', initials:'MI', roleLabel:'Team member', onShift:true,
-    shift:'On shift · ends 18:00',
-    groups:[
-      {label:'Work', items:[
-        ['home','Intro','home'],
-        ['tasks','My tasks','check',4],
-        ['ask','Ask the SOPs','spark'],
-        ['calendar','Calendar','cal'],
-        ['weekly','Weekly report','chart'],
-        ['leave','Leave','leave']
-      ]},
-      {label:'Community', items:[
-        ['forum','Team forum','forum',2],
-        ['docs','My documents','doc']
-      ]},
-      {label:'Account', items:[['accounts','Accounts','user']]}
-    ],
-    projects:{label:'Projects', items:[['Data Entry',43],['Reconciliation',42],['Claims Processing',33]]},
-    home:'tasks'
-  },
-  lead: {
-    name:'Priya Kulkarni', initials:'PK', roleLabel:'Team lead', onShift:true,
-    shift:'On shift · ends 19:00',
-    groups:[
-      {label:'Work', items:[
-        ['home','Intro','home'],
-        ['tasks','Tasks','board',12],
-        ['workload','Workload','users'],
-        ['ask','Ask the SOPs','spark'],
-        ['needs','Needs lead','bell',3],
-        ['soplib','SOP library','doc']
-      ]},
-      {label:'Team', items:[
-        ['calendar','Calendar','cal'],
-        ['weekly','Weekly report','chart'],
-        ['leave','Leave','leave']
-      ]},
-      {label:'Community', items:[['forum','Team forum','forum',2],['docs','My documents','doc']]},
-      {label:'Account', items:[['accounts','Accounts','user']]}
-    ],
-    projects:{label:'Projects', items:[['Data Entry',43],['Reconciliation',42],['Claims Processing',33]]},
-    home:'tasks'
-  },
-  hr: {
-    name:'Ritu Sharma', initials:'RS', roleLabel:'HR · Operations', onShift:true,
-    shift:'On shift · ends 17:30',
-    groups:[
-      {label:'Work', items:[['home','Intro','home'],['vault','Document vault','lock',6],['interviews','Interviews','users'],['ask','Ask the SOPs','spark']]},
-      {label:'Team', items:[['calendar','Calendar','cal'],['weekly','Weekly report','chart'],['leave','Leave','leave']]},
-      {label:'Community', items:[['forum','Team forum','forum']]},
-      {label:'Account', items:[['accounts','Accounts','user']]}
-    ],
-    projects:{label:'Projects', items:[['Operations',27],['Human Resources',3],['Technology',1],['Sales',1],['Finance',1]]},
-    home:'vault'
-  },
-  admin: {
-    name:'Anil Rao', initials:'AR', roleLabel:'Administrator', onShift:true,
-    shift:'On shift · ends 18:30',
-    groups:[
-      {label:'Work', items:[['home','Intro','home'],['vault','Document vault','lock',6],['audit','Audit log','shield',1],['interviews','Interviews','users'],['ask','Ask the SOPs','spark']]},
-      {label:'System', items:[['proof','System proof','check'],['tasks','Tasks','board',12]]},
-      {label:'Community', items:[['forum','Team forum','forum']]},
-      {label:'Account', items:[['accounts','Accounts','user']]}
-    ],
-    projects:{label:'Projects', items:[['Operations',27],['Human Resources',3],['Technology',1],['Sales',1],['Finance',1]]},
-    home:'vault'
-  },
-  interviewer: {
-    name:'Kabir Nair', initials:'KN', roleLabel:'Interviewer', onShift:false,
-    shift:'Off shift · starts 14:00',
-    groups:[
-      {label:'Work', items:[['home','Intro','home'],['mine','My interviews','users',2],['avail','Availability','cal'],['feedback','Feedback','check',1],['ask','Ask the SOPs','spark']]},
-      {label:'Team', items:[['weekly','Weekly report','chart'],['leave','Leave','leave']]},
-      {label:'Community', items:[['forum','Team forum','forum']]},
-      {label:'Account', items:[['accounts','Accounts','user']]}
-    ],
-    projects:null,
-    home:'mine'
-  },
-  forum: {
-    name:'Dev Account', initials:'DA', roleLabel:'Tester', onShift:false,
-    shift:'Off shift',
-    groups:[
-      {label:'Community', items:[['forum','Team forum','forum',2],['accounts','Accounts','user']]}
-    ],
-    projects:null,
-    home:'forum'
+/* ---------------- real people, reduced scale ---------------- */
+const PEOPLE = {
+  member:  {name:'Riya Sharma',      initials:'RS', shift:'Morning',    employee:'EMP0001', roleLabel:'Team member',   role:'member'},
+  lead:    {name:'Priya Kulkarni',  initials:'PK', shift:'—',         employee:'EMP0090', roleLabel:'Team lead',     role:'lead'},
+  hr:      {name:'Sahil Rao (HR)',  initials:'SR', shift:'—',         employee:'EMP0120', roleLabel:'HR · Operations', role:'hr'},
+  forum:   {name:'Dev Account',     initials:'DA', shift:'—',         employee:'dev',     roleLabel:'Tester · forum only', role:'forum'}
+};
+
+/* ---------------- real task data from the DB (reduced set) ---------------- */
+const TASKS = [
+  {code:'DE-101', title:'Clear suspense items list 101', type:'Reconciliation',      who:'Riya Sharma', p:1, st:'in_progress', dueISO:'2026-11-24T08:31', due:'Nov 24, 08:31',   late:true,  done:false},
+  {code:'DE-102', title:'Key in vendor invoices batch 102', type:'Data Entry',    who:'Riya Sharma', p:3, st:'in_progress', dueISO:'2026-11-23T13:30', due:'Nov 23, 13:30',   late:true,  done:false},
+  {code:'DE-103', title:'Clear suspense items list 103', type:'Reconciliation',      who:'Riya Sharma', p:4, st:'in_progress', dueISO:'2026-11-23T17:00', due:'Nov 23, 17:00',   late:true,  done:false},
+  {code:'DE-104', title:'Key in vendor invoices batch 104', type:'Data Entry',    who:'Riya Sharma', p:1, st:'in_progress', dueISO:'2026-11-24T03:31', due:'Nov 24, 03:31',   late:true,  done:false},
+  {code:'DE-105', title:'Clear suspense items list 105', type:'Reconciliation',      who:'Riya Sharma', p:3, st:'done',        dueISO:'2026-11-22T12:31', due:'Nov 22, 12:31',   late:false, done:true},
+  {code:'DE-106', title:'Clear suspense items list 106', type:'Reconciliation',      who:'Riya Sharma', p:3, st:'done',        dueISO:'2026-11-22T23:31', due:'Nov 22, 23:31',   late:false, done:true},
+  {code:'DE-107', title:'Enter claim forms - courier lot 107', type:'Data Entry',    who:'Riya Sharma', p:2, st:'done',        dueISO:'2026-11-22T05:31', due:'Nov 22, 05:31',   late:false, done:true},
+  {code:'DE-108', title:'Clear suspense items list 108', type:'Reconciliation',      who:'Arjun Mehta',  p:4, st:'pending',     dueISO:'2026-11-27T07:31', due:'Nov 27, 07:31',   late:false, done:false}
+];
+
+const GUIDE = {
+  Data_Entry: 'Data Entry and Reconciliation SOP v2.0 · section 3 (data entry quality checks). ' +
+    'All amounts above Rs. 50,000 are double-keyed: a second person enters the amount independently and the system compares both entries. ' +
+    'Dates are entered as DD-MM-YYYY; PAN and GSTIN fields are copied, never retyped.',
+  Reconciliation: 'Data Entry and Reconciliation SOP v2.0 · section 2 (shift handover). ' +
+    'The outgoing shift writes a handover note in the team tracker 15 minutes before shift end, listing open items, items waiting on the client ' +
+    'and anything due in the next shift. Open items older than 2 days must be flagged to the Team Lead in the handover.'
+};
+
+const ST = {pending:'Pending', in_progress:'In progress', done:'Done', escalated:'Escalated'};
+
+const TODAY = '2026-11-23'; // prototype clock, trimmed
+
+const TAGS = [
+  ['All',8],['Pending',2],['In progress',4],['Done',3],['Escalated',0],['Overdue',3]
+];
+
+const THREADS = [
+  {title:'Batch 77 keyed twice — how do I reverse it?', by:'Arjun Mehta', at:'Tue, Nov 24', kind:'question',
+   mentions:['@Priya Kulkarni'],
+   replies:[{by:'Riya Sharma', text:'The duplicate payment check covers keyed batches; send the reversal form plus the batch screenshot before I close it.', at:'Tue, 10:14'}]},
+  {title:'SOP gap: refund approval limit unknown', by:'Riya Sharma', at:'Mon, Nov 23', kind:'question',
+   mentions:[],
+   replies:[]},
+  {title:'Shift handover — Evening shift', by:'Priya Kulkarni', at:'Mon, Nov 23', kind:'update',
+   mentions:['@Arjun Mehta','@Riya Sharma'],
+   replies:[{by:'Arjun Mehta', text:'Evening queue: two suspense items plus one refund pending on client input.', at:'Mon, 18:52'}]},
+];
+
+const VAULT = [
+  {emp:'Riya Sharma',       dept:'Operations',  type:'offer_letter',    name:'EMP0001_offer_letter.pdf'},
+  {emp:'Riya Sharma',       dept:'Operations',  type:'id_proof',        name:'EMP0001_id_proof_scan.png'},
+  {emp:'Riya Sharma',       dept:'Operations',  type:'appraisal',       name:'EMP0001_appraisal_2025.docx'},
+  {emp:'Arjun Mehta',       dept:'Operations',  type:'warning_letter', name:'EMP0002_warning_letter.pdf'},
+  {emp:'Arjun Mehta',       dept:'Operations',  type:'appraisal',       name:'EMP0002_appraisal_2025.docx'},
+  {emp:'Arjun Mehta',       dept:'Operations',  type:'id_proof',        name:'EMP0002_passport_scan.jpg'},
+];
+
+const CHANNNELS = ['#general','#claims','#data-entry'];
+
+/* ---------------- state ---------------- */
+const S = {role:'member', view:null, project:null, closed:{}, compact:false, range:'all', drawer:false, thread:null, tag:'All', toggled:{}};
+
+function scopeForTasks(){
+  if(S.project) return S.project;
+  if(S.role==='lead'||S.role==='hr') return 'whole team';
+  return S.range==='week' ? 'this week' : 'all weeks';
+}
+
+function taskDateKey(t){ return (t.dueISO||'').slice(0,10); }
+function fmtDay(dd){ const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const y=+dd.slice(0,4), mo=+dd.slice(5,7)-1, d=+dd.slice(8,10);
+  const names=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const dt=new Date(Date.UTC(y,mo,d));
+  return names[(dt.getUTCDay()+6)%7]+' '+d+' '+m[mo]; }
+function weekGroups(){
+  const weeks = {};
+  for(const t of TASKS){ const dk=(t.dueISO||'').slice(0,7); weeks[dk]=weeks[dk]||[]; weeks[dk].push(t); }
+  const dks = Object.keys(weeks).sort().reverse();
+  const dk = dks[0];
+  const ts = weeks[dk];
+  const dayMap = {};
+  for(const t of ts){ const dd=(t.dueISO||'').slice(0,10); dayMap[dd]=dayMap[dd]||[]; dayMap[dd].push(t); }
+  const groups = Object.keys(dayMap).sort().reverse().map(dd=>({day:fmtDay(dd), rows:dayMap[dd]}));
+  const overdue = ts.filter(t=>!t.done && (t.dueISO||'')<=TODAY+'T23:59').length;
+  const label = 'WEEK ' + dk.replace('-',' ');
+  const dates = 'MON 23 NOV – SUN 29 NOV';
+  return {label, dates, tasks:ts.length, overdue, groups};
+}
+
+function taskRows(rows){
+  return rows.map(t=>{
+    const eff = S.toggled && S.toggled[t.code] !== undefined ? (S.toggled[t.code] ? 'done' : 'pending') : t.st;
+    const effDone = S.toggled && S.toggled[t.code] !== undefined ? (S.toggled[t.code] ? true : false) : t.done;
+    const effLate = !effDone && (t.dueISO||'') <= (TODAY+'T23:59');
+    return `
+    <div class="row" data-task="${t.code}">
+      <div class="p p${t.p}">P${t.p}</div>
+      <div>
+        <div class="ttl"><span class="code">${t.code}</span>${t.title}</div>
+        <div class="meta">${t.type} · ${t.who}</div>
+      </div>
+      <div class="st" data-task-status="${t.code}"><i style="background:${stColor(eff)}"></i>${ST[eff]}</div>
+      <div class="due${effLate?' late':''}">${effLate?'Late · ':'Due: '}${t.due}</div>
+      <div class="when">${effDone?'done':'—'}</div>
+    </div>`;}).join('');
+}
+function stColor(s){ return {pending:'#8a8a92', in_progress:'#3f6fa8', done:'#1f8a54', escalated:'#c0392b'}[s] || '#8a8a92'; }
+
+function pageHead(screen, scope, sub, actions){
+  return `<div class="head"><div><h1>${screen}<span class="dot">·</span>${scope}</h1>
+    <div class="sub">${sub}</div></div>
+    <div class="actions">${actions||''}</div></div>`;
+}
+
+function viewTasks(){
+  const isLead = S.role==='lead'||S.role==='hr';
+  const wg = weekGroups();
+  const chips = TAGS.map((c,i)=>`<button class="chip ${S.tag===c[0]?'on':''}" data-tag>${c[0]}<b>${c[1]}</b></button>`).join('');
+  return `
+    ${pageHead(S.role==='lead'?'Tracker':'My tasks', scopeForTasks(),
+      S.role==='lead'?'Everything the team has been given, newest first.':'Everything you have been given, newest first.',
+      `<button class="btn" data-action2>${svg('plus',13)} New task</button><button class="btn">Export</button>`)}
+    <div class="bar">
+      <div class="chips">${chips}</div>
+      <div class="toggle"><button data-range="all">All weeks</button><button data-range="week">This week</button></div>
+    </div>
+    <div class="weekh"><b>${wg.label}</b><span>${wg.dates}</span>
+      ${S.range==='week'?`<span class="now">This week</span>`:''}
+      <span>${wg.tasks} tasks</span><span class="${wg.overdue?'late':''}">${wg.overdue} overdue</span></div>
+    ${wg.groups.map(g=>`<div class="dayh">${g.day} · ${g.rows.length} tasks</div>${taskRows(g.rows)}`).join('')}
+  `;
+}
+
+function viewForum(){
+  const open = S.thread ? THREADS.find(t=>t.title===S.thread) : null;
+  const shown = open ? [open] : THREADS;
+  const threads = shown.map(t=>`
+        <div class="thread" data-task="thread">
+          <h4>${t.title} <span class="tag ${t.kind==='question'?'q':''}">${t.kind}</span></h4>
+          <div class="tm">${t.by} · ${t.at} · ${t.replies.length} replies · pings: ${t.mentions.join(', ')||'none'}</div>
+        </div>`).join('');
+  const active = S.thread ? '#claims' : (S.channel||'#general');
+  const list = open ? `<div class="thread" data-task="thread">${threadHtml(open)}</div>` : threads;
+  function threadHtml(t){
+    return `<div class="thread" data-task="thread">
+          <h4>${t.title} <span class="tag ${t.kind==='question'?'q':''}">${t.kind}</span></h4>
+          <div class="tm">${t.by} · ${t.at} · ${t.replies.length} replies · pings: ${t.mentions.join(', ')||'none'}</div>
+          ${t.replies.map(r=>`<div class="post"><span class="who">${r.by}</span><span class="when">${r.at}</span>
+            <div style="margin-top:5px">${r.text}</div></div>`).join('')}
+          ${t.replies.length===0?'<div class="mini" style="margin-top:8px">No replies yet — be the first.</div>':''}
+        </div>`;
   }
-};
+  return `
+    ${pageHead('Team forum', active, 'Doubts, problems and work talk — one channel per queue, threads inside.')}
+    <div class="forum">
+      <div class="card chan">
+        <div class="mini" style="margin-bottom:8px">Channels</div>
+        ${CHANNNELS.map(c=>`<a class="${c===active?'on':''}" data-channel="${c}">${c}</a>`).join('')}
+      </div>
+      <div>${list}</div>
+      <div class="card" style="margin-top:14px">
+        <h4 style="margin:0;font-size:13.5px">${open?open.title:'Open a thread to reply'}</h4>
+        ${open?`<div class="mini" style="margin-top:8px">Reply in the thread… type <b>@</b> to mention a person</div>`:''}
+      </div>
+    </div>
+  `;
+}
 
-/* ------------------------------------------------------------------ placeholder data */
-const TASKS = {
-  week44:[
-    {day:'Mon 26 Oct', rows:[
-      {p:1,code:'DE-014',title:'Placeholder task title for a data entry item',type:'Data Entry',who:'Meera Iyer',st:'done',due:'done Mon 26 Oct',when:'Mon 26 Oct',ev:true},
-      {p:1,code:'CP-031',title:'Placeholder task title for a claims check',type:'Claims Processing',who:'Meera Iyer',st:'in_progress',due:'due today · 17:00',when:'',late:false},
-      {p:3,code:'RC-007',title:'Placeholder task title for a reconciliation run',type:'Reconciliation',who:'Meera Iyer',st:'done',due:'done Mon 26 Oct',when:'Mon 26 Oct',ev:false}
-    ]},
-    {day:'Tue 27 Oct', rows:[
-      {p:2,code:'RC-011',title:'Placeholder task title, two lines when the title is long enough to wrap',type:'Reconciliation',who:'Meera Iyer',st:'pending',due:'due Fri 30 Oct',when:'',late:false},
-      {p:1,code:'DE-018',title:'Placeholder task title for a keyed invoice batch',type:'Data Entry',who:'Meera Iyer',st:'escalated',due:'2 days late',when:'',late:true}
-    ]},
-    {day:'Wed 28 Oct', rows:[
-      {p:4,code:'CP-036',title:'Placeholder task title, low priority',type:'Claims Processing',who:'Meera Iyer',st:'pending',due:'due Sun 1 Nov',when:'',late:false}
-    ]}
-  ],
-  week43:[
-    {day:'Mon 19 Oct', rows:[
-      {p:2,code:'DE-009',title:'Placeholder task title from last week',type:'Data Entry',who:'Meera Iyer',st:'done',due:'done Mon 19 Oct',when:'Mon 19 Oct',ev:true},
-      {p:3,code:'RC-004',title:'Placeholder task title, closed last week',type:'Reconciliation',who:'Meera Iyer',st:'done',due:'done Mon 19 Oct',when:'Mon 19 Oct',ev:true}
-    ]}
-  ]
-};
-const ST = {
-  pending:['Pending','#8a8a92'], in_progress:['In progress','#3f6fa8'],
-  done:['Done','#1f8a54'], escalated:['Escalated','#c0392b']
-};
+function viewVault(){
+  return `
+    ${pageHead('Document vault', 'Operations', 'Encrypted documents for the reduced demo scope. Uploads, audits and retention all write through the vault layer.', `<button class="btn primary">${svg('plus',13)} Upload</button>`)}
+    <div class="bar"><div class="chips">
+      ${[['All',6],['offer_letter',2],['id_proof',2],['appraisal',2],['warning_letter',0]].map((c,i)=>
+        `<button class="chip ${i===0?'on':''}">${c[0]}<b>${c[1]}</b></button>`).join('')}
+    </div><div class="toggle"><button data-range="all">Encrypted</button><button>Audit</button></div></div>
+    ${VAULT.map(d=>`
+      <div class="row" data-task="vault" style="grid-template-columns:30px minmax(0,1fr) 190px 150px">
+        <div class="p p3" style="background:#eef2f8;color:var(--accent)">${svg('lock',13)}</div>
+        <div><div class="ttl">${d.type.replace('_',' ')} — ${d.name}</div>
+          <div class="meta">${d.emp} · ${d.dept}</div></div>
+        <div class="due">Uploaded Oct 12 · scan (OCR)</div>
+        <div class="when" style="color:var(--green)">encrypted · AES-256</div>
+      </div>`).join('')}
+    <div class="mini" style="margin-top:12px">Every view and download writes an audit entry. Clicking a document shows the stored bytes next to the decrypted text.</div>
+  `;
+}
 
-/* ------------------------------------------------------------------ state */
-const S = {role:'member', view:null, project:null, closed:{}, compact:false, range:'all', drawer:false};
+function viewPlaceholder(label, blurb){
+  return `${pageHead(label, S.project||'team', blurb)}\n    <div class="card empty"><h3>${label} — sketched, not built</h3>\n      <div>${blurb} This page is a placeholder in the prototype; the layout follows the tracker conventions.</div></div>`;
+}
 
-/* ------------------------------------------------------------------ rail */
-function rail(){
-  const R = ROLES[S.role];
-  const groups = R.groups.map(g=>{
-    const closed = S.closed[S.role+':'+g.label];
-    const at = g.items.some(i=>i[3]);
-    return `<div class="grp ${closed?'closed':''}" data-grp="${g.label}">
-      <button class="hd"><span class="chev">${svg('chev',10)}</span>
-        <span class="t">${g.label}</span>${at?'<i class="at"></i>':''}</button>
-      <div class="items">${g.items.map(i=>`
-        <div class="item ${S.view===i[0]?'on':''}" data-view="${i[0]}">
-          ${svg(i[2])}<span class="lbl">${i[1]}</span>${i[3]?`<span class="badge" title="work waiting on me">${i[3]}</span>`:''}
-        </div>`).join('')}</div>
+function viewOverview(){
+  const openTasks = TASKS.filter(t=>!t.done).length;
+  const overdue = TASKS.filter(t=>!t.done && (t.due||'')<=TODAY).length;
+  return `${pageHead('Overview', 'today', 'What needs you first, counted from live data.')}
+    <div class="kpis">
+      <div class="kpi"><div class="n">${TASKS.length}</div><div class="l">tasks on the board</div></div>
+      <div class="kpi bad"><div class="n">${overdue}</div><div class="l">overdue</div></div>
+      <div class="kpi"><div class="n">${openTasks}</div><div class="l">open now</div></div>
+      <div class="kpi"><div class="n">${VAULT.length}</div><div class="l">encrypted docs (demo)</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="mini" style="margin-bottom:10px">Needs you first</div>
+        ${[['Escalated: two claims tasks with no owner','DE-101 · 2 days late'],['Open tasks older than 2 days','3 open'],['Done tasks with no evidence','1 this week']].map(r=>`
+          <div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid #f1eee8">
+            <span class="p p1" style="width:22px;height:22px;font-size:9px">!</span>
+            <div><div style="font-size:13px;font-weight:600">${r[0]}</div><div class="mini">${r[1]}</div></div></div>`).join('')}
+      </div>
+      <div class="card"><div class="mini" style="margin-bottom:10px">Workload</div>
+        ${[['Load line','1 person · ' + TASKS.filter(t=>t.who==='Riya Sharma').length + ' open tasks'],['Team average','—'],['Most loaded','Riya Sharma · ' + TASKS.filter(t=>t.who==='Riya Sharma').length + ' tasks']].map(r=>`
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #f1eee8;font-size:12.5px">
+            <span class="mini">${r[0]}</span><b>${r[1]}</b></div>`).join('')}
+      </div>
     </div>`;
+}
+
+/* ---------------- task detail panel ---------------- */
+function openTask(code){
+  const panel = document.getElementById('panel');
+  const t = TASKS.find(x=>x.code===code) || {code:code,title:'Placeholder task',type:'Data Entry',who:'Riya Sharma',st:'in_progress',due:'—',p:3,done:false,late:false};
+  const isDone = !!t.done || (localStorage.getItem('tl-done-'+code)?true:false) || (S.doneSet||{})[code];
+  panel.innerHTML = `
+    <div class="ph"><span class="p p${t.p}" style="width:24px;height:24px;font-size:10px">P${t.p}</span>
+      <span class="code">${t.code}</span><span>${t.type}</span><span>·</span><span>${t.who}</span></div>
+    <h2 style="margin-top:10px">${t.title}</h2>
+    <div class="ph" style="margin-top:8px"><span class="st"><i style="background:${stColor(t.st)}"></i>${ST[t.st]}</span>
+      <span>·</span><span>due ${t.due}</span></div>
+
+    <div class="sect"><h5>How to do this task</h5>
+      <div class="quote">${GUIDE[t.type]||'Guide for '+t.type}</div>
+      <div class="note"><b>Lead's note:</b> Client has not sent the signed form; waiting since yesterday.</div>
+      <div class="mini" style="margin-top:8px">AI draft: off for this task. The lead can turn it on per task.</div>
+    </div>
+
+    <div class="sect"><h5>Evidence</h5>
+      <div class="file"><span class="v">v2</span> ${t.code.toLowerCase()}-evidence-2.pdf
+        <span class="lk">${svg('lock',12)} locked</span></div>
+      <div class="drop">${svg('plus',14)}<div style="margin-top:6px">Drop a file, or click to upload</div>
+        <div class="mini" style="margin-top:4px">PDF, PNG, JPG · encrypted before it is written</div></div>
+      <div class="mini" style="margin-top:8px">A submitted file cannot be edited or deleted. To correct it, ask your lead — the new file is added as v3 and v2 stays visible.</div>
+      <div style="margin-top:10px"><button class="btn">Request correction</button></div>
+    </div>
+
+    <div class="sect"><h5>Notes and explanation</h5>
+      <div class="note">Upload the signed form and the batch screenshot; the reference number is on the second page.</div>
+      <div class="drop" style="text-align:left;padding:9px 12px;margin-top:10px">Add a note…</div>
+    </div>
+
+    <div class="line"></div>
+    <div class="mini">Change history: created ${t.due} · status ${t.st}</div>
+    <div style="margin-top:14px"><button class="btn" data-close>Close</button></div>
+  `;
+  panel.classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+}
+
+/* ---------------- render ---------------- */
+function rail(){
+  const R = PEOPLE[S.role];
+  const groups = [
+    {label:'Work', items:[
+      ['home','Intro',svg('home')],
+      ['tasks','My tasks',svg('check')],
+      ['ask','Ask the SOPs',svg('spark')],
+      ['calendar','Calendar',svg('cal')],
+      ['weekly','Weekly report',svg('chart')],
+      ['leave','Leave',svg('leave')]
+    ]},
+    {label:'Community', items:[['forum','Team forum',svg('forum')],['docs','My documents',svg('doc')]]},
+    {label:'Account', items:[['accounts','Accounts',svg('user')]]}
+  ].map(g=>{
+    const closed = S.closed[g.label];
+    const at = false;
+    return `<div class="grp ${closed?'closed':''}" data-grp="${g.label}">
+      <button class="hd"><span class="chev">${svg('chev',10)}</span><span class="t">${g.label}</span>${at?'<i class="at"></i>':''}</button>
+      <div class="items">${g.items.map(i=>{
+        const on = S.view===i[0];
+        const badge = i[0]==='tasks' ? (S.role==='member'?4:4) : (i[0]==='forum'?1:undefined);
+        return `<div class="item ${on?'on':''}" data-view="${i[0]}">${i[2]}<span class="lbl">${i[1]}</span>${badge?`<span class="badge">${badge}</span>`:''}</div>`;
+      }).join('')}</div></div>`;
   }).join('');
-
-  const proj = R.projects ? `<div class="proj"><span class="t">${R.projects.label}</span>
-    ${R.projects.items.map(p=>`<a class="${S.project===p[0]?'on':''}" data-project="${p[0]}" title="${p[0]} — ${p[1]} queued items">
-      <span class="t">${p[0]}</span><span class="n">${p[1]}</span></a>`).join('')}</div>` : '';
-
+  const proj = R.role==='hr'||R.role==='forum' ? '' : `
+    <div class="proj"><span class="t">Projects</span>
+      <a class="${S.project==='Data Entry'?'on':''}" data-project="Data Entry"><span class="t">Data Entry</span><span class="n">35</span></a>
+      <a class="${S.project==='Claims Processing'?'on':''}" data-project="Claims Processing"><span class="t">Claims Processing</span><span class="n">33</span></a>
+      <a class="${S.project==='Reconciliation'?'on':''}" data-project="Reconciliation"><span class="t">Reconciliation</span><span class="n">52</span></a>
+    </div>`;
   return `<aside class="rail">
-    <div class="plate">${brandMark}<div><div class="word">Tilted Lads</div>
-      <div class="sub">Intelligent systems</div></div></div>
+    <div class="plate">${brandMark}<div><div class="word">Tilted Lads</div><div class="sub">Intelligent systems</div></div></div>
     <nav class="nav">${groups}${proj}</nav>
     <div class="foot" id="foot">
       <div class="ava">${R.initials}</div>
       <div><div class="nm">${R.name}</div>
-        <div class="sh"><i class="${R.onShift?'on':''}"></i>${R.shift}</div></div>
+        <div class="sh"><i class="${R.shift&&R.shift!=='—'?'on':''}"></i>${R.shift==='—'?'On shift · ends 18:00':R.shift}</div></div>
     </div>
   </aside>`;
 }
@@ -485,249 +608,18 @@ function topbar(){
     <button class="iconbtn phonebtn" data-drawer>☰</button>
     <span class="pill"><i></i>AI offline · quoting SOP sections</span>
     <div class="spacer"></div>
-    <button class="iconbtn" title="Notifications">${svg('bell')}<span class="bub">3</span></button>
+    <button class="iconbtn" title="Notifications">${svg('bell')}<span class="bub">${S.role==='member'?1:0}</span></button>
     <select class="pill" style="padding:5px 8px;background:#fff">
       <option>Demo: switch person</option><option>Team lead</option><option>HR</option>
     </select>
   </div>`;
 }
 
-/* ------------------------------------------------------------------ tasks view */
-function pageHead(screen, scope, sub, actions){
-  return `<div class="head"><div><h1>${screen}<span class="dot">·</span>${scope}</h1>
-    <div class="sub">${sub}</div></div>
-    <div class="actions">${actions||''}</div></div>`;
-}
-
-function taskRows(rows){
-  return rows.map(r=>`
-    <div class="row" data-task="${r.code}">
-      <div class="p p${r.p}">P${r.p}</div>
-      <div>
-        <div class="ttl"><span class="code">${r.code}</span>${r.title}</div>
-        <div class="meta">${r.type} · ${r.who}</div>
-        ${r.st==='done'&&!r.ev?'<div class="noev">'+svg('shield',11)+' no evidence</div>':''}
-      </div>
-      <div class="st"><i style="background:${ST[r.st][1]}"></i>${ST[r.st][0]}</div>
-      <div class="due ${r.late?'late':''}">${r.due}</div>
-      <div class="when">${r.when}</div>
-    </div>`).join('');
-}
-
-function weekBlock(key, label, dates, tasks, isNow){
-  return `<div class="weekh"><b>${label}</b><span>${dates}</span>
-      ${isNow?'<span class="now">This week</span>':''}
-      <span>${tasks} tasks</span><span class="${isNow?'late':''}">${isNow?'1 overdue':'0 overdue'}</span></div>
-    ${TASKS[key].map(d=>`<div class="dayh">${d.day} · ${d.rows.length} tasks</div>${taskRows(d.rows)}`).join('')}`;
-}
-
-function scopeForTasks(){
-  if(S.project) return S.project;
-  if(S.role==='lead'||S.role==='admin') return 'whole team';
-  return S.range==='week' ? 'this week' : 'all weeks';
-}
-
-function viewTasks(){
-  const isLead = S.role==='lead'||S.role==='admin';
-  const chips = [['All',12],['Pending',4],['In progress',3],['Done',4],['Escalated',1],['Overdue',2]];
-  const weekB = S.range==='week'
-    ? weekBlock('week44','Week 44','Mon 26 Oct – Sun 1 Nov',9,true)
-    : weekBlock('week44','Week 44','Mon 26 Oct – Sun 1 Nov',9,true) + weekBlock('week43','Week 43','Mon 19 Oct – Sun 25 Oct',2,false);
-  return `
-    ${pageHead(isLead?'Tracker':'My tasks', scopeForTasks(),
-      isLead?'Everything the team has been given, newest first.':'Everything you have been given, newest first.',
-      `<button class="btn" data-action><b>${S.range==='week'?'This week':'All weeks'}</b></button><button class="btn primary" data-action2>${svg('plus',13)} New task</button>`)}
-    <div class="bar">
-      <div class="chips">${chips.map((c,i)=>`<button class="chip ${i===0?'on':''}" data-chip>${c[0]}<b>${c[1]}</b></button>`).join('')}</div>
-      <div class="toggle"><button ${S.range!=='week'?'class="on"':''} data-range="all">All weeks</button><button ${S.range==='week'?'class="on"':''} data-range="week">This week</button></div>
-    </div>
-    ${S.project?`<div class="mini" style="margin-bottom:6px">Filtered to <b>${S.project}</b> — <span style="color:var(--accent);cursor:pointer" data-clear>clear</span></div>`:''}
-    ${weekB}
-  `;
-}
-
-/* ------------------------------------------------------------------ vault / interviews / placeholders */
-function viewVault(){
-  const dept = S.project||'All departments';
-  return `
-    ${pageHead('Vault', dept, 'Documents you are allowed to see, with a record of every view.', `<button class="btn primary">${svg('plus',13)} Upload</button>`)}
-    <div class="bar"><div class="chips">
-      ${[['All',10],['Offer letter',3],['ID proof',3],['Appraisal',2],['Other',2]].map((c,i)=>
-        `<button class="chip ${i===0?'on':''}">${c[0]}<b>${c[1]}</b></button>`).join('')}</div>
-      <div class="toggle"><button class="on">Encrypted</button><button>Audit</button></div>
-    </div>
-    ${[['Offer letter','Employee placeholder · Operations','Uploaded 12 Oct · scan (OCR)'],
-       ['ID proof','Employee placeholder · Operations','Uploaded 12 Oct · scan (OCR)'],
-       ['Appraisal','Employee placeholder · Operations','Uploaded 02 Oct'],
-       ['Warning letter','Employee placeholder · Operations','Uploaded 28 Sep']].map(d=>`
-      <div class="row" data-task="vault" style="grid-template-columns:30px minmax(0,1fr) 190px 150px">
-        <div class="p p3" style="background:#eef2f8;color:var(--accent)">${svg('lock',13)}</div>
-        <div><div class="ttl">${d[0]} — placeholder document name.pdf</div>
-          <div class="meta">${d[1]}</div></div>
-        <div class="due">${d[2]}</div>
-        <div class="when" style="color:var(--green)">encrypted · AES-256</div>
-      </div>`).join('')}
-    <div class="mini" style="margin-top:12px">Every view and download writes an audit entry. Clicking a document shows the stored bytes next to the decrypted text.</div>
-  `;
-}
-
-function viewInterviews(){
-  return `
-    ${pageHead('Interviews','this week','Slots candidates can book, and the feedback that is still outstanding.', `<button class="btn primary">${svg('plus',13)} New slot</button>`)}
-    <div class="bar"><div class="chips">
-      ${[['Scheduled',4],['Completed',6],['Feedback pending',2],['Rescheduled',1],['Cancelled',1]].map((c,i)=>
-        `<button class="chip ${i===0?'on':''}">${c[0]}<b>${c[1]}</b></button>`).join('')}</div>
-      <div class="toggle"><button class="on">All recruiters</button><button>My roles</button></div>
-    </div>
-    ${[['30 min','Operations · Round 1','Scheduled','#3f6fa8'],
-       ['45 min','Technology · Round 2','Completed','#1f8a54'],
-       ['60 min','Operations · Final','Feedback pending','#b7791f'],
-       ['45 min','Sales · Round 1','Rescheduled','#8a8a92']].map((r,i)=>`
-      <div class="row" data-task="iv" style="grid-template-columns:30px minmax(0,1fr) 170px 160px 110px">
-        <div class="p p3" style="background:#eef2f8;color:var(--accent)">${svg('users',13)}</div>
-        <div><div class="ttl">Candidate placeholder · ${r[1]}</div>
-          <div class="meta">${r[0]} · interviewer placeholder · unique booking link</div></div>
-        <div class="due">${i===0?'Mon 26 Oct · 15:00':'last week'}</div>
-        <div class="st"><i style="background:${r[3]}"></i>${r[2]}</div>
-        <div class="when">${i===2?'nudge sent':'—'}</div>
-      </div>`).join('')}
-  `;
-}
-
-function viewForum(){
-  const channels = ['#general','#claims','#reconciliation','#data-entry'];
-  const current = S.channel||'#claims';
-  return `
-    ${pageHead('Team forum', current, 'Doubts, problems and work talk — one channel per queue, threads inside.')}
-    <div class="forum">
-      <div class="card chan">
-        <div class="mini" style="margin-bottom:8px">Channels</div>
-        ${channels.map(c=>`<a class="${c===current?'on':''}" data-channel="${c}">${c}
-          <span class="mini">${c===current?'3':''}</span></a>`).join('')}
-      </div>
-      <div>
-        ${[['Which form for a duplicate payment?','@Meera Iyer asked · 2 replies · 1h ago','q'],
-           ['Batch 77 keyed twice — how do I reverse it?','@Meera Iyer asked · 4 replies · yesterday','q'],
-           ['Shift handover notes for this queue','@Priya Kulkarni posted · 2 replies · 2d ago','']].map(t=>`
-          <div class="thread" data-task="thread">
-            <h4>${t[0]} ${t[2]==='q'?'<span class="tag q">question</span>':'<span class="tag">update</span>'}</h4>
-            <div class="tm">${t[1]}</div>
-          </div>`).join('')}
-        <div class="card" style="margin-top:14px">
-          <h4 style="margin:0;font-size:13.5px">Which form for a duplicate payment?</h4>
-          <div class="post"><span class="who">Meera Iyer</span><span class="when">09:14</span>
-            <div style="margin-top:5px">Placeholder thread body. <span class="mention">@Priya Kulkarni</span> is this the same as last week, or has the SOP changed?</div></div>
-          <div class="post"><span class="who">Priya Kulkarni</span><span class="when">09:21</span>
-            <div style="margin-top:5px">Placeholder reply. Use the duplicate payment form, section 4. <span class="mention all">@all</span>
-              reminder: evidence upload is needed before you close a claims task.</div></div>
-          <div class="drop" style="text-align:left;padding:10px 12px">Reply… type <b>@</b> to mention a person</div>
-          <div class="mini" style="margin-top:8px">@all is limited to the team lead and admin.</div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function viewPlaceholder(label, blurb){
-  return `${pageHead(label, S.role==='member'?'yours':'team', blurb)}
-    <div class="card empty"><h3>${label} — sketched, not built</h3>
-      <div>${blurb} This page is a placeholder in the prototype; the layout follows the tracker conventions.</div></div>`;
-}
-
-function viewOverview(){
-  return `${pageHead('Overview','this morning','What needs you first, counted from live data.')}
-    <div class="kpis">
-      <div class="kpi"><div class="n">20</div><div class="l">people on two shifts</div></div>
-      <div class="kpi bad"><div class="n">13</div><div class="l">overdue across the team</div></div>
-      <div class="kpi"><div class="n">27</div><div class="l">due today</div></div>
-      <div class="kpi"><div class="n">2</div><div class="l">over the load line</div></div>
-    </div>
-    <div class="grid2">
-      <div class="card"><div class="mini" style="margin-bottom:10px">Needs you first</div>
-        ${[['Escalated: two claims tasks with no owner','DE-018 · 2 days late'],
-           ['Questions the SOPs could not answer','3 waiting'],
-           ['Done tasks with no evidence','1 this week']].map(r=>`
-          <div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid #f1eee8">
-            <span class="p p1" style="width:22px;height:22px;font-size:9px">!</span>
-            <div><div style="font-size:13px;font-weight:600">${r[0]}</div>
-              <div class="mini">${r[1]}</div></div></div>`).join('')}
-      </div>
-      <div class="card"><div class="mini" style="margin-bottom:10px">Workload</div>
-        ${[['Load line','14 open tasks'],['Team average','9 open tasks'],['Most loaded','Meera Iyer · 14']].map(r=>`
-          <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #f1eee8;font-size:12.5px">
-            <span class="mini">${r[0]}</span><b>${r[1]}</b></div>`).join('')}
-      </div>
-    </div>`;
-}
-
-/* ------------------------------------------------------------------ task detail panel */
-function openTask(code){
-  const panel = document.getElementById('panel');
-  const row = Object.values(TASKS).flat().flatMap(d=>d.rows).find(r=>r.code===code) || {p:1,code:code,title:'Placeholder task',type:'Data Entry',who:'Meera Iyer',st:'in_progress'};
-  panel.innerHTML = `
-    <div class="ph"><span class="p p${row.p}" style="width:24px;height:24px;font-size:10px">P${row.p}</span>
-      <span class="code">${row.code}</span><span>${row.type}</span><span>·</span><span>${row.who}</span></div>
-    <h2 style="margin-top:10px">${row.title}</h2>
-    <div class="ph" style="margin-top:8px"><span class="st"><i style="background:${ST[row.st][1]}"></i>${ST[row.st][0]}</span>
-      <span>·</span><span>due ${row.due.replace('done ','')}</span></div>
-
-    <div class="sect"><h5>How to do this task</h5>
-      <div class="quote">Placeholder SOP text pulled from the section this task type uses, quoted verbatim so the
-        guide can never drift from the document.
-        <span class="src">Claims and Payments SOP › 4. Duplicate payments · retrieved, not retyped</span></div>
-      <div class="note"><b>Lead's note:</b> placeholder — “check the batch reference before you upload, the form needs it.”</div>
-      <div class="mini" style="margin-top:8px">AI draft: off for this task. The lead can turn it on per task.</div>
-    </div>
-
-    <div class="sect"><h5>Evidence</h5>
-      <div class="file"><span class="v">v2</span> placeholder-evidence-2.pdf
-        <span class="lk">${svg('lock',12)} locked</span></div>
-      <div class="file" style="opacity:.7"><span class="v">v1</span> placeholder-evidence-1.png
-        <span class="lk">superseded</span></div>
-      <div class="drop">${svg('plus',14)}<div style="margin-top:6px">Drop a file, or click to upload</div>
-        <div class="mini" style="margin-top:4px">PDF, PNG, JPG · encrypted before it is written</div></div>
-      <div class="mini" style="margin-top:8px">A submitted file cannot be edited or deleted. To correct it, ask your lead —
-        the new file is added as v3 and v2 stays visible.</div>
-      <div style="margin-top:10px"><button class="btn">Request correction</button></div>
-    </div>
-
-    <div class="sect"><h5>Notes and explanation</h5>
-      <div class="note">Placeholder note: “uploaded the signed form and the batch screenshot; the reference number is on
-        the second page.”</div>
-      <div class="drop" style="text-align:left;padding:9px 12px;margin-top:10px">Add a note…</div>
-    </div>
-
-    <div class="line"></div>
-    <div class="mini">Change history: created Mon 26 Oct 09:02 · in progress Mon 26 Oct 10:15 · evidence v1 11:40 · v2 14:02</div>
-    <div style="margin-top:14px"><button class="btn" data-close>Close</button></div>
-  `;
-  panel.classList.add('on');
-  document.getElementById('scrim').classList.add('on');
-}
-
-/* ------------------------------------------------------------------ render */
-function render(){
-  const R = ROLES[S.role];
-  if(!S.view) S.view = R.home;
-  const app = document.getElementById('app');
-  app.innerHTML = rail()
-    + `<main>${topbar()}<div class="content">${content()}</div></main>`
-    + `<div class="drawer">${rail()}<button class="close" data-close2>&times;</button></div>`;
-  const mob = window.matchMedia('(max-width:760px)').matches;
-  document.body.classList.toggle('mb', mob);
-  document.body.classList.toggle('draweron', mob && S.drawer);
-  const d = document.querySelector('.drawer');
-  d.classList.toggle('on', mob && S.drawer);
-  document.querySelectorAll('.proto [data-role]').forEach(b=>b.classList.toggle('on', b.dataset.role===S.role));
-}
-
 function content(){
-  const R = ROLES[S.role];
   const v = S.view;
   if(v==='tasks') return viewTasks();
   if(v==='forum') return viewForum();
   if(v==='vault') return viewVault();
-  if(v==='interviews'||v==='mine') return viewInterviews();
   if(v==='home') return viewOverview();
   if(v==='accounts') return viewPlaceholder('Accounts','Your details, your password, and which devices are signed in.');
   if(v==='weekly') return viewPlaceholder('Weekly report','What was done this week, by person and by queue.');
@@ -742,15 +634,28 @@ function content(){
   if(v==='docs') return viewPlaceholder('My documents','The HR documents that belong to you.');
   if(v==='avail') return viewPlaceholder('Availability','The slots you publish for candidates to book.');
   if(v==='feedback') return viewPlaceholder('Feedback','Structured ratings, hidden until you submit your own.');
+  if(v==='thread') return viewForum();
+  if(v==='iv') return viewPlaceholder('Interviews','Booking, status and feedback for candidate interviews.');
   return viewPlaceholder('Page','Placeholder.');
 }
 
-/* ------------------------------------------------------------------ events */
-function closeDrawer(){
-  if(S.drawer){ S.drawer = false; render(); }
+function render(){
+  const R = PEOPLE[S.role];
+  if(!S.view) S.view = 'tasks';
+  const app = document.getElementById('app');
+  app.innerHTML = rail() + `<main>${topbar()}<div class="content">${content()}</div></main>`
+    + `<div class="drawer">${rail()}<button class="close" data-close2>&times;</button></div>`;
+  const mob = window.matchMedia('(max-width:760px)').matches;
+  document.body.classList.toggle('mb', mob);
+  document.body.classList.toggle('draweron', mob && S.drawer);
+  const d = document.querySelector('.drawer');
+  d.classList.toggle('on', mob && S.drawer);
+  document.querySelectorAll('.proto [data-role]').forEach(b=>b.classList.toggle('on', b.dataset.role===S.role));
 }
+
+function closeDrawer(){ if(S.drawer){ S.drawer = false; render(); } }
 document.addEventListener('click', e=>{
-  const t = e.target.closest('[data-role],[data-view],[data-grp],[data-project],[data-task],[data-clear],[data-channel],[data-close],[data-drawer],[data-close2],[data-range],[data-action],[data-chip]');
+  const t = e.target.closest('[data-role],[data-view],[data-grp],[data-project],[data-task],[data-clear],[data-channel],[data-close],[data-drawer],[data-close2],[data-range],[data-action],[data-action2],[data-chip]');
   if(e.target.id==='density'){
     S.compact = !S.compact;
     document.body.classList.toggle('compact', S.compact);
@@ -758,42 +663,34 @@ document.addEventListener('click', e=>{
     e.target.classList.toggle('on', S.compact);
     return;
   }
-  if(e.target.closest('#foot') && !window.matchMedia('(max-width:760px)').matches){ document.getElementById('menu').classList.toggle('on'); return; }
   if(!t) { document.getElementById('menu').classList.remove('on'); closeDrawer(); return; }
-
   if(t.matches('[data-drawer]')){ S.drawer = !S.drawer; render(); return; }
   if(t.matches('[data-close2]')){ S.drawer = false; render(); return; }
   if(window.matchMedia('(max-width:760px)').matches && S.drawer){ S.drawer = false; render(); return; }
   if(t.dataset.range){ S.range = t.dataset.range; render(); return; }
-  if(t.matches('[data-action]')){ S.range = S.range==='week' ? 'all' : 'week'; render(); return; }
-
+  if(t.dataset.action2){ return; }
+  if(t.dataset.tag){ S.tag = t.textContent.replace(/[0-9]/g,'').trim(); render(); return; }
   if(t.dataset.role){
-    S.role = t.dataset.role; S.view = ROLES[S.role].home; S.project = null; S.channel = null;
+    S.role = t.dataset.role; S.view = 'tasks'; S.project = null; S.channel = null; S.thread = null;
     render(); window.scrollTo(0,0); return;
   }
-  if(t.dataset.grp){
-    const k = S.role+':'+t.dataset.grp;
-    S.closed[k] = !S.closed[k]; render(); return;
-  }
-  if(t.dataset.view){ S.view = t.dataset.view; S.project = null; render(); return; }
+  if(t.dataset.grp){ S.closed[t.dataset.grp] = !S.closed[t.dataset.grp]; render(); return; }
+  if(t.dataset.view){ S.view = t.dataset.view; S.channel = null; S.thread = null; render(); return; }
   if(t.dataset.project){
     S.project = S.project===t.dataset.project ? null : t.dataset.project;
-    S.view = S.role==='hr'||S.role==='admin' ? 'vault' : 'tasks';
+    S.view = S.role==='hr'||S.role==='forum' ? 'forum' : 'tasks';
     render(); return;
   }
-  if(t.dataset.clear){ S.project = null; render(); return; }
-  if(t.dataset.channel){ S.channel = t.dataset.channel; render(); return; }
+  if(t.dataset.channel){ S.channel = t.dataset.channel; S.view='forum'; render(); return; }
+  if(t.matches('[data-task-status]')){ S.toggled = S.toggled||{}; S.toggled[t.dataset.taskStatus] = !S.toggled[t.dataset.taskStatus]; render(); return; }
+  if(t.dataset.task){
+    if(t.dataset.task!=='thread' && t.dataset.task!=='vault'){ openTask(t.dataset.task); return; }
+    S.view='forum'; S.thread = t.dataset.task; render(); return;
+  }
   if(t.dataset.close){ closePanel(); return; }
-  if(t.dataset.task){ if(t.dataset.task!=='thread' && t.dataset.task!=='iv' && t.dataset.task!=='vault') openTask(t.dataset.task); return; }
 });
 
 document.getElementById('scrim').addEventListener('click', closePanel);
-document.querySelector('#scrim').addEventListener('click', closeDrawer);
-
-function closePanel(){
-  document.getElementById('panel').classList.remove('on');
-  document.getElementById('scrim').classList.remove('on');
-}
 function closePanel(){
   document.getElementById('panel').classList.remove('on');
   document.getElementById('scrim').classList.remove('on');

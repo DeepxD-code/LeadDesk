@@ -198,20 +198,36 @@ a task detail panel (today a card only shows status and history), upload handlin
 
 ---
 
-## Prototype (sketch, Oct 26 2026)
+## Prototype (functional, real data, trimmed, Oct 26 2026)
 
 A clickable prototype of the shell exists at `prototype/shell-prototype.html` — open it in a browser.
-It is **placeholder data only** (no real content): every role is available through the "Sign in as"
-prototype bar, and every tab — including the cut-off MVP pages — is a sketched placeholder page that
-follows the same shell grammar (title + actions, chips, sticky filters, week→day tracker or a short
-list, slide-over detail) rather than real data.
 
-Verified behaviors: rail group toggles, attention dots, per-role PROJECTS tiers, view toggles,
-week/all-weeks filter, task-detail panel (guide, evidence versions, notes, immutable-note text,
-correction button), forum with channels/threads/mentions (`@all` restricted to lead and admin),
-dark rail + light content, density, and the phone drawer. Screenshots live in
-`prototype/shots/` — `01-member.png` (member home), `02-lead.png` (lead tracker), `06-forum.png`
-(forum), `10-drawer.png` (phone drawer open).
+This is now a **functional prototype fed with real data, at reduced scale** (member asked: don't chase 30
+people; keep 2-3). It is not the finished product — it is the design running on trimmed real content:
+
+- **Real people**: Member — Riya Sharma (m01, Morning); Team lead — Priya Kulkarni; HR — Sahil Rao
+  (hr1, Operations); forum-only — Dev Account. (LeadDesk Tester/Developer are the forum-only login.)
+- **Real task data** (from `data/leaddesk.db`, reduced set): DE-101…DE-108 — suspense lists, keyed vendor
+  batches, claim courier lots; priorities P1–P4 from urgent/high/medium/low; statuses pending /
+  in_progress / done; deadlines Nov 22–27 Nov 2026, one week grouped (Week 23 · Mon 23 – Sun 29 · Nov ·
+  8 tasks, 2 overdue at prototype clock).
+- **Real guide text** from the Data Entry and Reconciliation SOP chunks.
+- **Real vault docs**: EMP0001 offer letter / ID proof / appraisal, EMP0002 warning letter / appraisal / ID proof.
+
+Functional in this version:
+- Tracker: week → day grouping from real deadlines, overdue computed, chips + week/all-weeks toggle
+  (real), task rows clickable into the slide-over detail, task status toggle (click the status cell) that
+  re-renders the board (local prototype state only).
+- Forum: channels, threads, replies, pings; `@all` chip present (lead/admin only in the real design).
+- Vault: real doc list with encrypted status.
+
+Verified behaviors: rail group toggles, badges, per-role PROJECTS tiers, view toggles, task-detail panel
+(guide, evidence versions, notes, correction button, status toggle), forum with channels/threads/mentions,
+dark rail + light content, density, phone drawer.
+
+Screenshots live in `prototype/shots/` — `01-member.png` (member tracker), `02-lead.png` (lead tracker),
+`03-hr.png` (HR vault), `06-forum.png` (forum), `07-task-detail.png`, `08-compact.png`, `09-narrow.png`,
+`10-drawer.png`.
 
 ---
 
