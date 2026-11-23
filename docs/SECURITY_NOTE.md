@@ -82,7 +82,9 @@ Worth stating directly:
   local machine; unacceptable in production.
 - **Sessions are bearer tokens with no expiry check at the server.** They are `httponly` cookies, cleared after 12 hours
   by the browser, but the session row itself is not time-limited server-side. There is no re-authentication for
-  sensitive actions, no rate limiting on the login form, and no account lockout.
+  sensitive actions, no rate limiting on the login form, and no account lockout. (Superseded during the security pass of
+  24 November 2026: server-side expiry, login throttling/lockout and the demo-account scope restriction are now in; the
+  remaining production gap is re-authentication for download and delete.)
 - **No CSRF tokens.** Cookies are `samesite=lax`, which blocks the classic cross-site form POST, but this is a browser
   behaviour relied on rather than an explicit control.
 - **No virus scanning.** An uploaded file is encrypted and stored; its contents are not inspected for malware.
@@ -105,8 +107,8 @@ In rough priority order:
    cannot rewrite history. Keep the hash chain as tamper evidence in transit.
 4. **Server-side session expiry** and idle timeout, refresh-on-activity, and re-authentication for download and delete.
 5. **Rate limiting and lockout** on login, and audit-driven alerting on repeated denials.
-6. **Two-person approval for deletion**, which is already modelled (`vault_delete_requests`) but currently trusts the
-   approver to differ from the requester only by convention — enforce it.
+6. **Two-person approval for deletion**, which is already modelled (`vault_delete_requests`) and enforced server-side:
+   the approver must differ from the requester, with a second approver required for the decision.
 7. **Antivirus scanning** (ClamAV) on upload, and content-type validation by magic bytes rather than file extension.
 8. **Field-level encryption or a separate metadata store** if filenames and employee IDs are themselves sensitive.
 
@@ -120,6 +122,10 @@ In rough priority order:
 - Hash-chained, append-only audit log with engine-level triggers.
 - Denied attempts recorded as first-class audit events.
 - Per-file key rotation on re-upload, forced by content hashing (`sha256`) on every document.
+- Content-type validation by magic bytes rather than file extension, on both the SOP and vault uploads.
+- Upload reads capped before buffering (20 MB vault / 25 MB SOP), so an oversized upload is rejected without ever being
+  loaded into memory.
+- Lint and test CI (`.github/workflows/ci.yml`): ruff (F/E9/W/I) plus the pytest suite, on push and pull request.
 
 ## Team forum and demo accounts
 

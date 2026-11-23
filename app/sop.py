@@ -23,6 +23,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from . import lexicon, llm
 from .auth import current_user, require
 from .db import DATA_DIR, ex, notify, now_s, q, q1, tx
+from .security import check_magic
 
 router = APIRouter(prefix="/api/sop", tags=["sop"])
 SOP_DIR = os.path.join(DATA_DIR, "sops")
@@ -445,6 +446,7 @@ async def upload_doc(file: UploadFile = File(...), user=Depends(require("lead", 
     data = await file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(400, "File is larger than 25 MB")
+    check_magic(data, name)
     # Writing a file is blocking work; keep it off the event loop.
     await asyncio.to_thread(Path(path).write_bytes, data)
     try:

@@ -18,6 +18,7 @@ from . import crypto
 from .auth import current_user, require
 from .db import DATA_DIR, ex, now, now_s, q, q1, tx
 from .ocr import extract_text
+from .security import check_magic
 
 router = APIRouter(prefix="/api/vault", tags=["vault"])
 STORE_DIR = os.path.join(DATA_DIR, "vault")
@@ -261,9 +262,11 @@ def list_docs(employee_id: str | None = None, doc_type: str | None = None, user=
 @router.post("/docs")
 async def upload(file: UploadFile = File(...), employee_id: str = Form(...), doc_type: str = Form(""),
                  retention_until: str = Form(""), user=Depends(require("hr", "admin"))):
-    data = await file.read()
-    if not data or len(data) > 20 * 1024 * 1024:
+    limit = 20 * 1024 * 1024
+    data = await file.read(limit + 1)
+    if not data or len(data) > limit:
         raise HTTPException(400, "File is empty or larger than 20 MB")
+    check_magic(data, file.filename or "upload")
     if retention_until:
         try:
             date.fromisoformat(retention_until)
@@ -275,7 +278,7 @@ async def upload(file: UploadFile = File(...), employee_id: str = Form(...), doc
 
 @router.get("/docs/{doc_id}")
 def doc_meta(doc_id: int, user=Depends(current_user)):
-    doc = _get_doc_checked(doc_id, user, "view")
+    _get_doc_checked(doc_id, user, "view")
     full = q1(DOC_SELECT + " WHERE v.id=?", (doc_id,))
     audit(user, "view", doc_id, "metadata and text")
     return {"doc": _public(full), "text": TEXT.get(doc_id, "")}

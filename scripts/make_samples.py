@@ -100,7 +100,6 @@ def make_claims_docx():
     d.add_heading("Claims and Payments SOP", 0)
     d.add_paragraph("Version 3.2 - Owner: Operations Excellence - Fictional sample for LeadDesk demo")
     for head, paras in CLAIMS:
-        level = 2 if head[:3].count(".") and head[1] == "." and head[2].isdigit() else 1
         d.add_heading(head, level=2 if head.startswith("3.1") else 1)
         for p in paras:
             d.add_paragraph(p)

@@ -15,7 +15,33 @@ import threading
 import time
 from collections import defaultdict
 
-from fastapi import Request
+from fastapi import HTTPException, Request
+
+# ---------------------------------------------------------------- upload magic bytes
+
+UPLOAD_MAGIC = {
+    ".pdf": b"%PDF",
+    ".docx": b"PK" + bytes([3, 4]),
+    ".png": bytes([0x89]) + b"PNG",
+    ".jpg": bytes([0xFF, 0xD8, 0xFF]),
+    ".jpeg": bytes([0xFF, 0xD8, 0xFF]),
+}
+
+
+def check_magic(data: bytes, filename: str) -> None:
+    """Reject an upload whose bytes do not match the type the client declared.
+
+    The extension is client input; the magic bytes are what the file actually is.
+    A renamed `.pdf` that is really something else is refused before any parser or
+    the vault ever sees it.
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    magic = UPLOAD_MAGIC.get(ext)
+    if magic is None:
+        return
+    if not data.startswith(magic):
+        raise HTTPException(400, f"File content does not match the declared type {ext}")
+
 
 # ---------------------------------------------------------------- headers
 

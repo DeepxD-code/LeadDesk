@@ -7,12 +7,13 @@ Integrated   : HR document vault (encrypted, role-based, OCR search, audit log)
 import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import crypto, forum, impact, interviews, llm, leaves, security, sop, tasks, vault
+from . import crypto, forum, impact, interviews, leaves, llm, security, sop, tasks, vault
 from .auth import COOKIE, current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
@@ -21,7 +22,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("leaddesk")
 STATIC = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 
-app = FastAPI(title="LeadDesk", version="1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    crypto.load_master_key()
+    if os.environ.get("SEED_DEMO", "1") == "1":
+        from .seed import ensure_forum_demo_users, seed_all
+        if not q1("SELECT id FROM users LIMIT 1"):
+            await asyncio.to_thread(seed_all)
+        else:
+            await asyncio.to_thread(ensure_forum_demo_users)
+    sop.INDEX.rebuild()
+    vault.load_text_index()
+    asyncio.create_task(_scheduler_loop())
+    log.info("LeadDesk ready. Time zone: %s. AI: %s", TZ_NAME, llm.status(force=True))
+    _warn_if_public_demo()
+    yield
+
+
+app = FastAPI(title="LeadDesk", version="1.0", lifespan=lifespan)
 for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router, interviews.public, leaves.router):
     app.include_router(r)
 
@@ -53,23 +72,6 @@ async def _scheduler_loop():
         except Exception:  # noqa: BLE001
             log.exception("scheduler tick failed")
         await asyncio.sleep(60)
-
-
-@app.on_event("startup")
-async def startup():
-    init_db()
-    crypto.load_master_key()
-    if os.environ.get("SEED_DEMO", "1") == "1":
-        from .seed import ensure_forum_demo_users, seed_all
-        if not q1("SELECT id FROM users LIMIT 1"):
-            await asyncio.to_thread(seed_all)
-        else:
-            await asyncio.to_thread(ensure_forum_demo_users)
-    sop.INDEX.rebuild()
-    vault.load_text_index()
-    asyncio.create_task(_scheduler_loop())
-    log.info("LeadDesk ready. Time zone: %s. AI: %s", TZ_NAME, llm.status(force=True))
-    _warn_if_public_demo()
 
 
 def _warn_if_public_demo():
