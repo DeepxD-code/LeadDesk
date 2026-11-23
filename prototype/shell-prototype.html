@@ -655,7 +655,7 @@ function render(){
 
 function closeDrawer(){ if(S.drawer){ S.drawer = false; render(); } }
 document.addEventListener('click', e=>{
-  const t = e.target.closest('[data-role],[data-view],[data-grp],[data-project],[data-task],[data-clear],[data-channel],[data-close],[data-drawer],[data-close2],[data-range],[data-action],[data-action2],[data-chip]');
+  const t = e.target.closest('[data-role],[data-view],[data-grp],[data-project],[data-task],[data-task-status],[data-clear],[data-channel],[data-close],[data-drawer],[data-close2],[data-range],[data-action],[data-action2],[data-chip]');
   if(e.target.id==='density'){
     S.compact = !S.compact;
     document.body.classList.toggle('compact', S.compact);
