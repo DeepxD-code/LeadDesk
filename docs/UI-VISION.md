@@ -198,6 +198,23 @@ a task detail panel (today a card only shows status and history), upload handlin
 
 ---
 
+## Prototype (sketch, Oct 26 2026)
+
+A clickable prototype of the shell exists at `prototype/shell-prototype.html` — open it in a browser.
+It is **placeholder data only** (no real content): every role is available through the "Sign in as"
+prototype bar, and every tab — including the cut-off MVP pages — is a sketched placeholder page that
+follows the same shell grammar (title + actions, chips, sticky filters, week→day tracker or a short
+list, slide-over detail) rather than real data.
+
+Verified behaviors: rail group toggles, attention dots, per-role PROJECTS tiers, view toggles,
+week/all-weeks filter, task-detail panel (guide, evidence versions, notes, immutable-note text,
+correction button), forum with channels/threads/mentions (`@all` restricted to lead and admin),
+dark rail + light content, density, and the phone drawer. Screenshots live in
+`prototype/shots/` — `01-member.png` (member home), `02-lead.png` (lead tracker), `06-forum.png`
+(forum), `10-drawer.png` (phone drawer open).
+
+---
+
 ## Build order
 
 Nothing above is built yet. Dependencies point to this sequence:
