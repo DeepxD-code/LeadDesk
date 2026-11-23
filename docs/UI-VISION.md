@@ -198,6 +198,30 @@ a task detail panel (today a card only shows status and history), upload handlin
 
 ---
 
+## 14. Public team preview and interview calendar — LOCKED (Nov 23, 2026)
+
+- **Public team preview** — LOCKED as the sanctioned way to share the shell with teammates.
+  - Static preview at `leaddesk-preview.vercel.app`: `/` redirects to `/preview.html` and
+    `/book/:token` redirects to `/book.html?preview=1&token=:token`.
+  - Synthetic data only; actions simulate in the browser; no backend, real sign-in, persistent
+    storage, outbound email or real file uploads; refreshing resets the sample records.
+  - It is **not** a production deployment of the LeadDesk application. Docker / persistent-host
+    paths are for real work — see `docs/DEPLOY.md`.
+- **Interview calendar sync** — LOCKED as optional.
+  - Each interviewer connects their own primary Google Calendar from **My availability**.
+  - LeadDesk checks free/busy before showing slots to candidates, then creates, updates or cancels
+    the interview event and sends the invitation from Google.
+  - Without a connection the existing email + `.ics` flow continues unchanged.
+  - Errors surface to HR with a retry action; a confirmed booking is not discarded when a calendar
+    request fails.
+  - Interview notes are private to HR and the assigned interviewer; never exposed to candidates.
+
+Build impact: `app/google_calendar.py`, `app/interviews.py` (per-interviewer connect, private notes,
+native integrations kept out of preview mode), `static/preview-mock.js` (preview personas and
+simulated actions).
+
+---
+
 ## Prototype (functional, real data, trimmed, Oct 26 2026)
 
 A clickable prototype of the shell exists at `prototype/shell-prototype.html` — open it in a browser.

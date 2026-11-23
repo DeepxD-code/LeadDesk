@@ -121,14 +121,14 @@ const FORUM_ONLY_ROLES = new Set(["tester", "developer"]);
 
 const NAV = {
   lead: [
-    { id: "work", label: "Work", items: [["overview", "Overview"], ["board", "Task board"]] },
+    { id: "work", label: "Work", items: [["overview", "Overview"], ["board", "Task board"], ["weekly-report", "Weekly report"]] },
     { id: "knowledge", label: "Knowledge", items: [["assistant", "Ask the SOPs"], ["needs-lead", "Needs lead", "needs"], ["sops", "SOP library"]] },
     { id: "community", label: "Community", items: [["forum", "Team forum"]] },
     { id: "records", label: "Records", items: [["vault", "Documents"], ["proof", "System proof"]] },
     { id: "presentation", label: "Presentation", items: [["demo", "Demo walkthrough"]] },
   ],
   member: [
-    { id: "work", label: "Work", items: [["my-tasks", "My tasks"], ["assistant", "Ask the SOPs"]] },
+    { id: "work", label: "Work", items: [["my-tasks", "My tasks"], ["assistant", "Ask the SOPs"], ["weekly-report", "Weekly report"]] },
     { id: "community", label: "Community", items: [["forum", "Team forum"]] },
     { id: "records", label: "Records", items: [["vault", "My documents"]] },
   ],
@@ -168,6 +168,7 @@ const NAV_ICONS = {
   interviews: '<rect x="2.8" y="4" width="10.4" height="9" rx="1"/><path d="M5.5 2.5v3M10.5 2.5v3M2.8 7h10.4"/>',
   "my-interviews": '<rect x="2.8" y="4" width="10.4" height="9" rx="1"/><path d="M5.5 2.5v3M10.5 2.5v3M2.8 7h10.4M5.3 9.5h2.2"/>',
   availability: '<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8v3.5l2.2 1.3"/>',
+  "weekly-report": '<rect x="2.8" y="3" width="10.4" height="8" rx="1"/><path d="M5.5 3v3M10.5 3v3"/>',
   audit: '<path d="M3.5 3h9M3.5 6.5h9M3.5 10h6M3.5 13h9"/>',
   bell: '<path d="M4.6 6.8a3.4 3.4 0 0 1 6.8 0c0 4 1.5 4.2 1.5 5.3H3.1c0-1.1 1.5-1.3 1.5-5.3z"/><path d="M6.5 13.2a1.5 1.5 0 0 0 3 0"/>',
 };
@@ -671,6 +672,65 @@ async function showForumThread(id, el) {
 }
 
 VIEWS.forum = drawForum;
+
+// ------------------------------------------------------------------ weekly report (impact numbers)
+VIEWS["weekly-report"] = async (el) => {
+  const r = await api("/api/impact");
+  const a = r.assistant, b = r.board, v = r.vault, iv = r.interviews;
+  el.innerHTML = html`
+    <div class="page-head">
+      <div class="grow"><h1>Weekly report</h1><p>Impact numbers for the last ${r.window_days} days.</p></div>
+    </div>
+    <div class="metric-strip">
+      <button class="metric-card" data-go="board?filter=overdue"><span class="metric-label">Open tasks</span><strong>${b.tasks}</strong><span class="metric-trend">${b.overdue} overdue</span></button>
+      <button class="metric-card" data-go="board?filter=today"><span class="metric-label">Due today</span><strong>${b.due_today}</strong><span class="metric-trend warn">Next 24 hours</span></button>
+      <button class="metric-card" data-go="board?filter=escalated"><span class="metric-label">Escalated</span><strong>${b.escalated}</strong><span class="metric-trend">Active issues</span></button>
+      <button class="metric-card" data-go="board"><span class="metric-label">Overloaded</span><strong>${b.overloaded}</strong><span class="metric-trend">${b.busiest ? `Busiest: ${b.busiest.name}` : "No data"}</span></button>
+      <button class="metric-card" data-go="assistant"><span class="metric-label">Assistant answer rate</span><strong>${a.answer_rate_pct}%</strong><span class="metric-trend">${a.hours_saved} h saved</span></button>
+      <button class="metric-card" data-go="interviews"><span class="metric-label">Interviews booked</span><strong>${iv.upcoming}</strong><span class="metric-trend">${iv.feedback_pending} feedback pending</span></button>
+    </div>
+    <div class="dashboard-grid">
+      <section class="panel">
+        <header class="panel-head"><div><h2>Assistant</h2><p>SOP questions asked and answered</p></div></header>
+        <div class="panel-body">
+          <div class="metric-strip">
+            <span class="metric-card"><span class="metric-label">Asked</span><strong>${a.asked}</strong></span>
+            <span class="metric-card"><span class="metric-label">Answered</span><strong>${a.answered}</strong></span>
+            <span class="metric-card"><span class="metric-label">Answer rate</span><strong>${a.answer_rate_pct}%</strong></span>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <header class="panel-head"><div><h2>Work</h2><p>Open tasks and deadlines</p></div><button class="text-action" data-go="board">Task board</button></header>
+        <div class="panel-body">
+          <div class="metric-strip">
+            <span class="metric-card"><span class="metric-label">Tasks</span><strong>${b.tasks}</strong></span>
+            <span class="metric-card"><span class="metric-label">Overdue</span><strong>${b.overdue}</strong></span>
+            <span class="metric-card"><span class="metric-label">Due today</span><strong>${b.due_today}</strong></span>
+          </div>
+        </div>
+      </section>
+      <aside class="dashboard-side">
+        <section class="panel attention-panel">
+          <header class="panel-head"><div><h2>Interviews</h2><p>Upcoming and feedback</p></div><button class="text-action" data-go="interviews">Interviews</button></header>
+          <div class="panel-body">
+            <div class="metric-strip">
+              <span class="metric-card"><span class="metric-label">Upcoming</span><strong>${iv.upcoming}</strong></span>
+              <span class="metric-card"><span class="metric-label">Hours booked</span><strong>${iv.hours_booked}</strong></span>
+              <span class="metric-card"><span class="metric-label">Feedback pending</span><strong>${iv.feedback_pending}</strong></span>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </div>
+    <section class="panel recent-panel">
+      <header class="panel-head"><div><h2>Assumptions</h2><p>Every number is a named count over demo data</p></div></header>
+      <div class="panel-body">
+        <ul class="muted small" style="margin:0;padding-left:18px">${r.assumptions.map((x) => html`<li>${x}</li>`).join("")}</ul>
+      </div>
+    </section>`;
+  $$("[data-go]", el).forEach((k) => (k.onclick = () => (location.hash = "#/" + k.dataset.go)));
+};
 
 // ------------------------------------------------------------------ overview (lead)
 VIEWS.overview = async (el) => {
