@@ -21,7 +21,7 @@ services:
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       MAIL_FROM: ${MAIL_FROM:-LeadDesk <scheduler@localhost>}
-      SEED_DEMO: ${SEED_DEMO:-1}
+      SEED_DEMO: ${SEED_DEMO:-0}
       DEMO_MODE: ${DEMO_MODE:-0}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

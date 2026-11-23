@@ -97,7 +97,7 @@ Assumes a Linux host with Docker, a domain, and ports 80 and 443 open.
 DOMAIN=leaddesk.example.com
 PUBLIC_BASE_URL=https://leaddesk.example.com
 DEMO_MODE=0
-SEED_DEMO=1
+SEED_DEMO=0
 # real mail, so invites actually arrive
 SMTP_HOST=smtp.yourprovider.com
 SMTP_PORT=587
@@ -224,7 +224,7 @@ What such platforms need you to do:
 | `VAULT_MASTER_KEY_FILE` | `./secrets/vault_master.key` | where the vault key lives |
 | `VAULT_MASTER_KEY` | unset | key inline as base64, instead of a file |
 | `VAULT_AUTOCREATE_KEY` | `1` in Docker | generate the key on first run |
-| `SEED_DEMO` | `1` | create the demo team, SOPs and history on an empty database |
+| `SEED_DEMO` | `1` | create the demo team, SOPs and history on an empty database; the **production** compose now defaults it to `0` so a public deploy starts empty |
 | `DEMO_MODE` | `1` | one-click sign-in and the demo password endpoint. **Set to 0 in public** |
 | `DEMO_PASSWORD` | `demo1234` | the password those buttons use |
 | `PUBLIC_BASE_URL` | `http://localhost:8000` | base of booking links in email; `https://` also enables Secure cookies |
