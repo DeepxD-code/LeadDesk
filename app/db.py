@@ -258,6 +258,27 @@ CREATE TABLE IF NOT EXISTS interviews (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS google_oauth_states (
+  state TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_verifier TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS google_calendar_connections (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  calendar_label TEXT,
+  wrapped_key BLOB NOT NULL,
+  token_blob BLOB NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS interview_calendar_sync (
+  interview_id INTEGER PRIMARY KEY REFERENCES interviews(id) ON DELETE CASCADE,
+  calendar_user_id INTEGER REFERENCES users(id),
+  event_id TEXT,
+  status TEXT NOT NULL,
+  error TEXT,
+  updated_at TEXT NOT NULL
+);
 -- A slot can carry at most one live booking. This is the database-level guard
 -- against double booking, on top of the locked transaction in the booking code.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_interview_slot_live ON interviews(slot_id) WHERE status = 'scheduled';
@@ -274,6 +295,15 @@ CREATE TABLE IF NOT EXISTS feedback (
   submitted_at TEXT NOT NULL,
   UNIQUE(interview_id, interviewer_id)
 );
+CREATE TABLE IF NOT EXISTS interview_notes (
+  id INTEGER PRIMARY KEY,
+  interview_id INTEGER NOT NULL REFERENCES interviews(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 5000),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_interview_notes_interview ON interview_notes(interview_id, created_at, id);
 CREATE TABLE IF NOT EXISTS outbox (
   id INTEGER PRIMARY KEY,
   at TEXT NOT NULL,

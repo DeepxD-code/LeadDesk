@@ -65,6 +65,16 @@ def hr(seeded):
 
 
 @pytest.fixture(scope="session")
+def interviewer(seeded):
+    return _client("int1")
+
+
+@pytest.fixture(scope="session")
+def interviewer2(seeded):
+    return _client("int2")
+
+
+@pytest.fixture(scope="session")
 def tester(seeded):
     return _client("tester")
 

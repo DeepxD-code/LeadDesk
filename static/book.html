@@ -33,18 +33,21 @@
 <body>
 <div class="book-wrap">
   <div class="book-top"><span class="logo">🧭</span> LeadDesk</div>
+  <div id="preview-note" class="alert warn" style="display:none">Preview mode: this is a sample booking. No email or calendar invite will be sent; changes reset when you refresh.</div>
   <div id="app" class="skeleton">Loading your booking link…</div>
 </div>
 <div class="toast-wrap" id="toasts"></div>
 
+<script src="/static/preview-mock.js?v=3"></script>
 <script>
 (function () {
   "use strict";
 
-  var TOKEN = location.pathname.replace(/\/+$/, "").split("/").pop();
+  var TOKEN = new URLSearchParams(location.search).get("token") || location.pathname.replace(/\/+$/, "").split("/").pop();
   var API = "/api/book/" + encodeURIComponent(TOKEN);
   var state = { data: null, chosen: null, confirm: false, busy: false, showSlots: false };
   var root = document.getElementById("app");
+  if (window.LEADDESK_PREVIEW_MODE) document.getElementById("preview-note").style.display = "block";
 
   var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -94,6 +97,7 @@
   }
 
   function request(method, url, body) {
+    if (window.LEADDESK_PREVIEW_API) return window.LEADDESK_PREVIEW_API(url, { method: method, body: body });
     var opt = { method: method, headers: {} };
     if (body !== undefined) {
       opt.headers["Content-Type"] = "application/json";
@@ -121,10 +125,16 @@
       render();
     }).catch(function (e) {
       root.className = "";
+      var missing = e.status === 404;
       root.innerHTML =
-        '<div class="alert bad"><b>This booking link is not valid.</b><br>' +
+        '<div class="alert ' + (missing ? "bad" : "warn") + '"><b>' +
+        (missing ? "This booking link is not valid." : "We could not load available times.") + "</b><br>" +
         esc(e.message) + "</div>" +
-        '<p class="small muted" style="margin-top:14px">Please check the link in your invitation email, or reply to your recruiter for a new one.</p>';
+        (missing
+          ? '<p class="small muted" style="margin-top:14px">Please check the link in your invitation email, or reply to your recruiter for a new one.</p>'
+          : '<p class="small muted" style="margin-top:14px">No booking was changed. Try again, or contact your recruiter if this continues.</p><button class="btn" id="retry-load">Try again</button>');
+      var retry = document.getElementById("retry-load");
+      if (retry) retry.addEventListener("click", load);
     });
   }
 
@@ -165,7 +175,7 @@
         "<dt>Location</dt><dd>" + locationHtml(b.location) + "</dd>" +
         "<dt>Time zone</dt><dd>" + esc(d.time_zone) + "</dd>" +
       "</dl>" +
-      (b.reschedules ? '<p class="tiny muted">Moved ' + b.reschedules + " time" + (b.reschedules > 1 ? "s" : "") + ". Your calendar invite was updated.</p>" : "") +
+      (b.reschedules ? '<p class="tiny muted">Moved ' + b.reschedules + " time" + (b.reschedules > 1 ? "s" : "") + (window.LEADDESK_PREVIEW_MODE ? ". Sample booking only." : ". Your calendar invite was updated.") + "</p>" : "") +
       '<div class="row">' +
         '<a class="btn primary" href="' + API + '/ics">📎 Add to calendar (.ics)</a>' +
         (d.past ? "" : '<button class="btn" id="change">Change the time</button>') +
@@ -211,7 +221,7 @@
           "</div></div>";
         }).join("") +
       "</div>" +
-      <div class="sticky-act">' +
+      '<div class="sticky-act">' +
         '<button class="btn primary big" id="book" style="width:100%"' + (state.chosen ? "" : " disabled") + ">" +
           (state.confirm ? "Confirm booking" : "Book this time") +
         "</button>" +
@@ -294,7 +304,7 @@
         if (!confirm("Cancel this interview?\n\nYour recruiter will be told and you will need a new link to rebook.")) return;
         state.busy = true;
         request("POST", API + "/cancel").then(function () {
-          toast("Your interview is cancelled. A cancellation notice was emailed to you and the interviewer.", "ok");
+          toast(window.LEADDESK_PREVIEW_MODE ? "Sample booking cancelled. No message was sent." : "Your interview is cancelled. A cancellation notice was emailed to you and the interviewer.", "ok");
           return load();
         }).catch(function (e) {
           toast(e.message, "bad");
@@ -309,11 +319,10 @@
     setBusyText("Booking…");
     request("POST", API, { slot_id: state.chosen }).then(function (res) {
       state.busy = false;
-      toast(
-        (res.rescheduled ? "Time changed to " : "Booked for ") + res.label +
-        ". A calendar invite is on its way to your inbox.",
-        "ok"
-      );
+      toast(window.LEADDESK_PREVIEW_MODE
+        ? (res.rescheduled ? "Sample booking moved to " : "Sample booking set for ") + res.label + ". No calendar invite was sent."
+        : (res.rescheduled ? "Time changed to " : "Booked for ") + res.label + ". A calendar invite is on its way to your inbox.",
+      "ok");
       return load();
     }).catch(function (e) {
       state.busy = false;

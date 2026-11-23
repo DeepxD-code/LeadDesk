@@ -1,0 +1,20 @@
+{
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/preview.html",
+      "permanent": false
+    },
+    {
+      "source": "/book/:token",
+      "destination": "/book.html?preview=1&token=:token",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/static/:path*",
+      "destination": "/:path*"
+    }
+  ]
+}

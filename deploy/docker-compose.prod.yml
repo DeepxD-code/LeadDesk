@@ -24,6 +24,9 @@ services:
       SEED_DEMO: ${SEED_DEMO:-1}
       DEMO_MODE: ${DEMO_MODE:-0}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
       DATA_DIR: /app/data
       VAULT_MASTER_KEY_FILE: /app/secrets/vault_master.key
       VAULT_AUTOCREATE_KEY: "1"

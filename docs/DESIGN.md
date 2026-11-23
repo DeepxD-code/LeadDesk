@@ -8,21 +8,22 @@ precision, not decorative effects.
 
 ## Visual language
 
-- Base surfaces: warm-neutral or cool-neutral off-white, white cards and dark slate navigation.
-- Primary accent: muted blue `#315d98`, used for primary actions and active decisions.
+- Base surfaces: warm off-white `#f6f4f0`, white content, and a near-black navigation rail.
+- Primary accent: muted blue `#315d98` on light surfaces and `#5b8fd6` on the rail.
 - Semantic colors: green for success, amber for attention, red for errors or overdue work, blue for information.
 - Typography: Segoe UI Variable Text or the platform Segoe UI system stack. No external font dependency.
 - Heading scale: 22px page title, 17px section title, 15px subsection title.
-- Radius: 8px controls and cards, 10px dashboard panels, 99px status pills.
+- Radius: 7-8px controls and rows, 10px panels, 99px status pills.
 - Shadow: reserved for raised content, sticky surfaces and overlays. Normal cards use a one-pixel border.
 
 ## Layout
 
-- Desktop navigation is a 224px sticky sidebar.
-- The top bar is sticky and at least 58px tall.
+- Desktop navigation is a collapsible 252px rail with grouped links and role-aware project queues.
+- The rail reduces to a 60px icon rail at tablet widths and becomes a drawer with bottom navigation on phones.
+- The top bar is sticky and at least 54px tall; identity and account actions live in the rail footer.
 - Main content uses 26px horizontal and 22px vertical spacing on desktop.
 - The overview uses a compact metric strip, segmented chart tabs and stacked attention panels.
-- At intermediate widths, overview panels stack while attention panels use two columns; mobile switches to horizontal navigation and single-column panels at 760px.
+- At intermediate widths, overview panels stack while attention panels use two columns; mobile switches to a drawer and bottom tabs at 760px.
 - One primary action per page or dialog. Put secondary actions beside it or in a clear menu.
 
 ## Interaction

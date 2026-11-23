@@ -23,10 +23,11 @@ function html(strings, ...vals) {
 }
 
 async function api(path, opts = {}) {
+  if (window.LEADDESK_PREVIEW_API) return window.LEADDESK_PREVIEW_API(path, opts);
   const o = { method: "GET", headers: {}, ...opts };
   if (o.body && !(o.body instanceof FormData)) { o.headers["Content-Type"] = "application/json"; o.body = JSON.stringify(o.body); }
   const r = await fetch(path, o);
-  if (r.status === 401 && !path.startsWith("/api/auth")) { S.me = null; renderLogin(); throw new Error("Please sign in"); }
+  if (r.status === 401 && !path.startsWith("/api/auth")) { S.me = null; closeModal(); renderLogin(); throw new Error("Please sign in"); }
   const ct = r.headers.get("content-type") || "";
   const data = ct.includes("json") ? await r.json() : await r.text();
   if (!r.ok) {
@@ -58,6 +59,30 @@ function modal(content, { wide = false, onClose } = {}) {
 }
 function closeModal() { const ov = $("#overlay"); if (ov) { ov.remove(); ov._onClose && ov._onClose(); } }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+function reasonModal({ title, description, label, submitLabel, required = true, onSubmit, onSuccess, onCancel }) {
+  let submitted = false;
+  const ov = modal(html`
+    <div class="modal-head"><h2>${title}</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+    <p class="muted">${description}</p>
+    <form id="reason-form">
+      <label class="f">${label}<textarea class="input" name="reason" rows="4" maxlength="1000" ${required ? raw("required") : ""}></textarea></label>
+      <div class="row"><span class="grow"></span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">${submitLabel}</button></div>
+    </form>`.s, { onClose: () => { if (!submitted && onCancel) onCancel(); } });
+  $("#reason-form", ov).onsubmit = async (e) => {
+    e.preventDefault();
+    const reason = new FormData(e.target).get("reason").toString();
+    if (required && !reason.trim()) { $("[name=reason]", ov).focus(); return; }
+    const submit = $('button[type="submit"]', e.target);
+    submit.disabled = true;
+    try {
+      await onSubmit(reason);
+      submitted = true;
+      closeModal();
+      onSuccess && onSuccess();
+    } catch (er) { fail(er); submit.disabled = false; }
+  };
+}
 
 // Server works in IST; we display server wall-clock times as written.
 let skewMs = 0;
@@ -95,25 +120,58 @@ const S = { me: null, meta: null, notes: { items: [], unread: 0 }, ai: null, cou
 const FORUM_ONLY_ROLES = new Set(["tester", "developer"]);
 
 const NAV = {
-  lead: [["Workspace", [["overview", "", "Overview"], ["board", "", "Task board"]]],
-         ["Knowledge", [["assistant", "", "SOP assistant"], ["needs-lead", "", "Unanswered", "needs"], ["sops", "", "SOP library"]]],
-         ["Records", [["vault", "", "Documents"], ["proof", "", "System proof"]]],
-         ["Presentation", [["demo", "", "Demo walkthrough"]]]],
-  member: [["Work", [["my-tasks", "", "My tasks"], ["assistant", "", "SOP assistant"]]],
-           ["Records", [["vault", "", "My documents"]]]],
-  hr: [["People", [["vault", "", "Document vault"], ["interviews", "", "Interviews"]]],
-       ["Knowledge", [["assistant", "", "SOP assistant"], ["proof", "", "System proof"]]],
-       ["Presentation", [["demo", "", "Demo walkthrough"]]]],
-  admin: [["Workspace", [["overview", "", "Overview"], ["board", "", "Task board"]]],
-          ["Knowledge", [["assistant", "", "SOP assistant"], ["needs-lead", "", "Unanswered", "needs"], ["sops", "", "SOP library"]]],
-          ["Records", [["vault", "", "Document vault"], ["audit", "", "Audit log"], ["interviews", "", "Interviews"]]],
-          ["System", [["proof", "", "System proof"], ["demo", "", "Demo walkthrough"]]]],
-  interviewer: [["Interviews", [["my-interviews", "", "My interviews"], ["availability", "", "Availability"]]]],
-  tester: [["Community", [["forum", "", "Team forum"]]]],
-  developer: [["Community", [["forum", "", "Team forum"]]]],
+  lead: [
+    { id: "work", label: "Work", items: [["overview", "Overview"], ["board", "Task board"]] },
+    { id: "knowledge", label: "Knowledge", items: [["assistant", "Ask the SOPs"], ["needs-lead", "Needs lead", "needs"], ["sops", "SOP library"]] },
+    { id: "community", label: "Community", items: [["forum", "Team forum"]] },
+    { id: "records", label: "Records", items: [["vault", "Documents"], ["proof", "System proof"]] },
+    { id: "presentation", label: "Presentation", items: [["demo", "Demo walkthrough"]] },
+  ],
+  member: [
+    { id: "work", label: "Work", items: [["my-tasks", "My tasks"], ["assistant", "Ask the SOPs"]] },
+    { id: "community", label: "Community", items: [["forum", "Team forum"]] },
+    { id: "records", label: "Records", items: [["vault", "My documents"]] },
+  ],
+  hr: [
+    { id: "people", label: "People", items: [["vault", "Document vault"], ["interviews", "Interviews"]] },
+    { id: "knowledge", label: "Knowledge", items: [["assistant", "Ask the SOPs"], ["proof", "System proof"]] },
+    { id: "community", label: "Community", items: [["forum", "Team forum"]] },
+    { id: "presentation", label: "Presentation", items: [["demo", "Demo walkthrough"]] },
+  ],
+  admin: [
+    { id: "work", label: "Work", items: [["overview", "Overview"], ["board", "Task board"]] },
+    { id: "knowledge", label: "Knowledge", items: [["assistant", "Ask the SOPs"], ["needs-lead", "Needs lead", "needs"], ["sops", "SOP library"]] },
+    { id: "community", label: "Community", items: [["forum", "Team forum"]] },
+    { id: "records", label: "Records", items: [["vault", "Document vault"], ["audit", "Audit log"], ["interviews", "Interviews"]] },
+    { id: "system", label: "System", items: [["proof", "System proof"], ["demo", "Demo walkthrough"]] },
+  ],
+  interviewer: [
+    { id: "interviews", label: "Interviews", items: [["my-interviews", "My interviews"], ["availability", "Availability"]] },
+    { id: "community", label: "Community", items: [["forum", "Team forum"]] },
+  ],
+  tester: [{ id: "community", label: "Community", items: [["forum", "Team forum"]] }],
+  developer: [{ id: "community", label: "Community", items: [["forum", "Team forum"]] }],
 };
 const HOME = { lead: "overview", member: "my-tasks", hr: "vault", admin: "overview", interviewer: "my-interviews",
   tester: "forum", developer: "forum" };
+const NAV_ICONS = {
+  overview: '<path d="M3 3.5h4v4H3zM9 3.5h4v4H9zM3 9h4v4H3zM9 9h4v4H9z"/>',
+  board: '<rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6" rx="1"/>',
+  "my-tasks": '<path d="m3.3 8.2 2.4 2.4 6-6"/><path d="M12.5 8v4a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/>',
+  assistant: '<path d="m8 2.5 1.4 4.1 4.1 1.4-4.1 1.4L8 13.5l-1.4-4.1-4.1-1.4 4.1-1.4z"/>',
+  "needs-lead": '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5M8 11.2v.1"/>',
+  sops: '<path d="M4 2.8h5l3 3v7.4H4z"/><path d="M9 2.8v3h3M6 8.5h4M6 10.8h4"/>',
+  forum: '<path d="M2.8 3.5h10.4v7H8l-3.1 2.2v-2.2H2.8z"/>',
+  vault: '<path d="M3.3 2.8h6l3.4 3.4v7H3.3z"/><path d="M9.3 2.8v3.4h3.4M5.5 8h5M5.5 10.3h5"/>',
+  proof: '<path d="m8 2.5 4.5 1.8v3.4c0 2.4-1.7 4.2-4.5 5.8-2.8-1.6-4.5-3.4-4.5-5.8V4.3z"/><path d="m5.8 7.8 1.5 1.5 3-3"/>',
+  demo: '<path d="M5 3.5v9l7-4.5z"/>',
+  interviews: '<rect x="2.8" y="4" width="10.4" height="9" rx="1"/><path d="M5.5 2.5v3M10.5 2.5v3M2.8 7h10.4"/>',
+  "my-interviews": '<rect x="2.8" y="4" width="10.4" height="9" rx="1"/><path d="M5.5 2.5v3M10.5 2.5v3M2.8 7h10.4M5.3 9.5h2.2"/>',
+  availability: '<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8v3.5l2.2 1.3"/>',
+  audit: '<path d="M3.5 3h9M3.5 6.5h9M3.5 10h6M3.5 13h9"/>',
+  bell: '<path d="M4.6 6.8a3.4 3.4 0 0 1 6.8 0c0 4 1.5 4.2 1.5 5.3H3.1c0-1.1 1.5-1.3 1.5-5.3z"/><path d="M6.5 13.2a1.5 1.5 0 0 0 3 0"/>',
+};
+const navIcon = (id) => raw(`<svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">${NAV_ICONS[id] || NAV_ICONS.overview}</svg>`);
 
 // ------------------------------------------------------------------ login
 async function renderLogin() {
@@ -132,14 +190,14 @@ async function renderLogin() {
     </div>
     <div class="panel">
       <h1>Sign in</h1>
-      <p class="muted">Use your username and password.</p>
+      <p class="muted">${window.LEADDESK_PREVIEW_MODE ? "Choose a sample persona below. No real account is required." : "Use your username and password."}</p>
       <form id="lf" class="stack">
         <label class="f">Username <input class="input" name="username" autocomplete="username" required></label>
         <label class="f">Password <input class="input" name="password" type="password" autocomplete="current-password" required></label>
         <button class="btn primary big" type="submit">Sign in</button>
       </form>
       ${users.length ? html`<button class="btn big tour" id="tour">Open guided demo</button>
-        <p class="muted tiny" id="tourhint" style="margin:6px 0 0">Signs you in as a team lead and walks the whole product, one real action at a time.</p>
+        <p class="muted tiny" id="tourhint" style="margin:6px 0 0">${window.LEADDESK_PREVIEW_MODE ? "Opens a guided tour of the sample workspace." : "Signs you in as a team lead and walks the whole product, one real action at a time."}</p>
         <h3 style="margin-top:24px">Demo: sign in as…</h3>
         <div class="persona">${users.map((u) => html`<button data-u="${u.username}"><b>${u.name}</b><span class="muted small">${u.role_label}${u.department && u.role === "hr" ? " · " + u.department : ""}${u.shift ? " · " + u.shift + " shift" : ""}</span></button>`)}</div>` : ""}
     </div>
@@ -147,6 +205,7 @@ async function renderLogin() {
   const go = async (username, pw, target) => {
     try {
       const r = await api("/api/auth/login", { method: "POST", body: { username, password: pw } });
+      closeModal();
       S.me = r.user;
       await boot();
       if (target) location.hash = target;
@@ -178,7 +237,7 @@ function changePasswordDialog() {
     try {
       await api("/api/auth/password", { method: "POST", body: { current: f.get("current"), new: f.get("new") } });
       closeModal();
-      toast("Password changed. Other devices were signed out.", "ok");
+      toast(window.LEADDESK_PREVIEW_MODE ? "Preview only; the password was not changed." : "Password changed. Other devices were signed out.", "ok");
     } catch (err) { fail(err); }
     b.disabled = false;
   };
@@ -207,57 +266,268 @@ async function boot() {
   }
 }
 
+function preferenceKey(name) {
+  return `leaddesk:${S.me.username}:${name}`;
+}
+
+function readPreference(name, fallback) {
+  try {
+    const value = localStorage.getItem(preferenceKey(name));
+    return value === null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+function savePreference(name, value) {
+  try {
+    localStorage.setItem(preferenceKey(name), value);
+  } catch {
+    return;
+  }
+}
+
+function navGroupsClosed() {
+  try {
+    return JSON.parse(readPreference("nav-groups", "{}"));
+  } catch {
+    return {};
+  }
+}
+
+function projectPath(kind, value) {
+  const query = new URLSearchParams({ [kind === "department" ? "department" : "task_type"]: value });
+  return kind === "department" ? `#/vault?${query}` : `#/${S.me.role === "member" ? "my-tasks" : "board"}?${query}`;
+}
+
+async function refreshProjects() {
+  const box = $("#project-nav");
+  if (!box) return;
+  const projects = [];
+  if (["lead", "admin", "member"].includes(S.me.role)) {
+    const path = S.me.role === "member" ? "/api/tasks?mine=true" : "/api/tasks";
+    const { tasks } = await api(path);
+    const counts = new Map((S.meta.task_types || []).map((type) => [type, 0]));
+    tasks.forEach((task) => {
+      if (task.status !== "done") counts.set(task.task_type, (counts.get(task.task_type) || 0) + 1);
+    });
+    (S.meta.task_types || []).forEach((type) => projects.push({ kind: "task", value: type, count: counts.get(type) || 0 }));
+  }
+  if (["hr", "admin"].includes(S.me.role)) {
+    const { employees } = await api("/api/vault/employees");
+    const departments = S.me.role === "hr" ? [S.me.department].filter(Boolean)
+      : [...new Set(employees.map((employee) => employee.department).filter(Boolean))].sort();
+    departments.forEach((department) => projects.push({ kind: "department", value: department }));
+  }
+  box.classList.toggle("hidden", !projects.length);
+  box.innerHTML = projects.length ? html`
+    <div class="projects-heading">Projects</div>
+    ${projects.map((project) => html`<a class="project-link" href="${projectPath(project.kind, project.value)}"
+      data-project-kind="${project.kind}" data-project-value="${project.value}" title="${project.value}">
+      <span class="project-label">${project.value}</span>
+      ${project.kind === "task" ? html`<span class="project-count">${project.count}</span>` : ""}
+    </a>`)}`.s : "";
+  const selected = new URLSearchParams(location.hash.split("?")[1] || "");
+  const kind = selected.has("department") ? "department" : "task";
+  const value = selected.get(kind === "department" ? "department" : "task_type");
+  $$(".project-link", box).forEach((link) => {
+    link.classList.toggle("active", link.dataset.projectKind === kind && link.dataset.projectValue === value);
+  });
+}
+
 function renderShell() {
   const me = S.me;
   const forumOnly = FORUM_ONLY_ROLES.has(me.role);
   const groups = NAV[me.role] || [];
+  const closedGroups = navGroupsClosed();
+  S.density = readPreference("density", "comfortable");
+  const mobileTabs = me.role === "member"
+    ? [["my-tasks", "My tasks"], ["assistant", "Ask SOPs"], ["forum", "Forum"]]
+    : me.role === "hr"
+      ? [["vault", "Documents"], ["assistant", "Ask SOPs"], ["forum", "Forum"]]
+      : me.role === "interviewer"
+        ? [["my-interviews", "Interviews"], ["availability", "Availability"], ["forum", "Forum"]]
+        : me.role === "tester" || me.role === "developer"
+          ? [["forum", "Forum"]]
+          : [["board", "Task board"], ["assistant", "Ask SOPs"], ["forum", "Forum"]];
   $("#root").innerHTML = html`
-  <div class="app">
-    <aside class="side">
-      <div class="brand"><span class="logo">LD</span> LeadDesk</div>
-      <nav class="nav">
-        ${groups.map(([g, items]) => html`${g ? html`<div class="nav-group">${g}</div>` : html`<div style="height:10px"></div>`}
-          ${items.map(([id, ico, label, badge]) => html`<a href="#/${id}" data-nav="${id}"><span class="ico">${ico}</span>${label}${badge ? html`<span class="badge hidden" data-badge="${badge}"></span>` : ""}</a>`)}`)}
+  <div class="app" id="app">
+    <aside class="side" aria-label="Primary navigation">
+      <div class="brand-plate" aria-label="Tilted Lads">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span class="brand-copy"><b>Tilted Lads</b></span>
+      </div>
+      <nav class="nav" aria-label="Workspace">
+        ${groups.map((group) => html`<section class="nav-group-block ${closedGroups[group.id] ? "is-closed" : ""}" data-nav-group="${group.id}">
+          <button class="nav-group-toggle" type="button" aria-expanded="${closedGroups[group.id] ? "false" : "true"}">
+            ${navIcon(group.items[0][0])}<span class="nav-group-label">${group.label}</span>
+            <span class="nav-group-dot hidden" data-group-dot="${group.id}"></span>
+            <span class="nav-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="nav-group-items">
+            ${group.items.map(([id, label, badge]) => html`<a href="#/${id}" data-nav="${id}" title="${label}">
+              ${navIcon(id)}<span class="nav-label">${label}</span>
+              ${badge ? html`<span class="badge hidden" data-badge="${badge}"></span>` : ""}
+            </a>`)}
+          </div>
+        </section>`)}
+        <div class="project-nav hidden" id="project-nav"></div>
       </nav>
-      <div class="foot">${forumOnly ? "Forum access only" : html`All times IST (UTC+05:30)<br>AI runs locally`}</div>
+      <button class="profile-button" id="profile-menu" type="button" aria-haspopup="menu" aria-expanded="false">
+        ${avatar(me.name, me.id)}
+        <span class="profile-copy"><b>${me.name}</b><small>${me.role === "hr" ? `${me.role_label} · ${me.department}` : me.role_label}</small>
+          ${me.shift ? html`<small class="profile-shift"><i></i>${me.shift} shift</small>` : ""}
+        </span>
+        <span class="profile-more" aria-hidden="true">···</span>
+      </button>
     </aside>
-    <main class="main">
+    <main class="main" id="main-content">
       <div class="top">
-        <div class="who">${avatar(me.name, me.id)}<div><b>${me.name}</b><div class="muted tiny">${me.role_label}${me.role === "hr" ? " · " + me.department : ""}${me.shift ? " · " + me.shift + " shift" : ""}</div></div></div>
-        ${forumOnly ? "" : html`<span class="pill ai-pill" id="aipill">AI: checking…</span>
+        <button class="iconbtn nav-toggle" id="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+        </button>
+        ${window.LEADDESK_PREVIEW_MODE ? html`<span class="pill warn">Preview · sample data, resets on refresh</span>` : ""}
+        ${forumOnly && !window.LEADDESK_PREVIEW_MODE ? "" : html`${!forumOnly ? html`<span class="pill ai-pill" id="aipill">AI: checking…</span>` : ""}
           <div style="position:relative">
-            <button class="iconbtn" id="bell" title="Notifications" aria-label="Notifications"><span aria-hidden="true">N</span><span class="n hidden" id="belln"></span></button>
+            <button class="iconbtn" id="bell" title="Notifications" aria-label="Notifications">${navIcon("bell")}<span class="n hidden" id="belln"></span></button>
             <div class="pop hidden" id="pop"></div>
           </div>
-          <select class="input" id="switch" title="Demo: switch person"></select>`}
-        <button class="btn sm" id="pwbtn" title="Change your password">Password</button>
-        <button class="btn sm" id="logout">Sign out</button>
+          <button class="density-button" id="density-toggle" type="button" aria-pressed="${S.density === "compact"}" title="Change row density">
+            ${S.density === "compact" ? "Compact" : "Comfortable"}
+          </button>
+          <select class="input" id="switch" title="Demo: switch person" aria-label="Demo: switch person"></select>`}
       </div>
-      <div class="content" id="view"></div>
+      <div class="content" id="view" tabindex="-1"></div>
     </main>
+  </div>
+  <button class="shell-scrim" id="shell-scrim" type="button" aria-label="Close navigation"></button>
+  <nav class="mobile-tabs" aria-label="Quick navigation">
+    ${mobileTabs.map(([id, label]) => html`<a href="#/${id}" data-mobile-nav="${id}" title="${label}">${navIcon(id)}<span>${label}</span></a>`)}
+    <button type="button" id="more-nav" aria-label="More navigation" aria-expanded="false">
+      <span class="more-icon" aria-hidden="true">···</span><span>More</span>
+    </button>
+  </nav>
+  <div class="account-menu hidden" id="account-menu" role="menu" aria-label="Account options">
+    <div class="account-menu-user"><b>${me.name}</b><small>${me.role_label}</small></div>
+    <button type="button" role="menuitem" id="account-details">Accounts</button>
+    <button type="button" role="menuitem" id="password-action">Change password</button>
+    <button type="button" role="menuitemcheckbox" aria-checked="${S.density === "compact"}" id="density-action">
+      ${S.density === "compact" ? "Comfortable density" : "Compact density"}
+    </button>
+    <div class="account-menu-divider"></div>
+    <button type="button" role="menuitem" id="logout">Sign out</button>
   </div>`;
-  $("#logout").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); S.me = null; location.hash = ""; renderLogin(); };
-  const pwbtn = $("#pwbtn");
-  if (pwbtn) pwbtn.onclick = () => changePasswordDialog();
+  const profile = $("#profile-menu");
+  const accountMenu = $("#account-menu");
+  profile.onclick = () => {
+    const open = accountMenu.classList.toggle("hidden") === false;
+    profile.setAttribute("aria-expanded", String(open));
+  };
+  $("#account-details").onclick = () => {
+    accountMenu.classList.add("hidden");
+    profile.setAttribute("aria-expanded", "false");
+    accountDialog();
+  };
+  $("#password-action").onclick = () => {
+    accountMenu.classList.add("hidden");
+    profile.setAttribute("aria-expanded", "false");
+    changePasswordDialog();
+  };
+  const setDensity = () => {
+    S.density = S.density === "compact" ? "comfortable" : "compact";
+    savePreference("density", S.density);
+    document.body.classList.toggle("compact-mode", S.density === "compact");
+    $("#density-toggle")?.setAttribute("aria-pressed", String(S.density === "compact"));
+    if ($("#density-toggle")) $("#density-toggle").textContent = S.density === "compact" ? "Compact" : "Comfortable";
+    $("#density-action").textContent = S.density === "compact" ? "Comfortable density" : "Compact density";
+    $("#density-action").setAttribute("aria-checked", String(S.density === "compact"));
+  };
+  $("#density-toggle")?.addEventListener("click", setDensity);
+  $("#density-action").onclick = setDensity;
+  document.body.classList.toggle("compact-mode", S.density === "compact");
+  $("#logout").onclick = async () => {
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+      closeModal(); S.me = null; location.hash = ""; renderLogin();
+    } catch (error) { fail(error); }
+  };
   const bell = $("#bell");
   if (bell) bell.onclick = toggleNotes;
-  document.addEventListener("mousedown", (e) => { if (!e.target.closest("#pop") && !e.target.closest("#bell")) $("#pop")?.classList.add("hidden"); });
+  $("#nav-toggle").onclick = () => setNavOpen(true);
+  $("#shell-scrim").onclick = () => setNavOpen(false);
+  $("#more-nav").onclick = () => {
+    const open = !document.body.classList.contains("nav-open");
+    setNavOpen(open);
+    $("#more-nav").setAttribute("aria-expanded", String(open));
+  };
+  $$(".nav-group-toggle").forEach((button) => {
+    button.onclick = () => {
+      const group = button.closest("[data-nav-group]");
+      const collapsed = group.classList.toggle("is-closed");
+      button.setAttribute("aria-expanded", String(!collapsed));
+      closedGroups[group.dataset.navGroup] = collapsed;
+      savePreference("nav-groups", JSON.stringify(closedGroups));
+    };
+  });
+  if (!S.shellListeners) {
+    document.addEventListener("mousedown", (e) => {
+      if (!e.target.closest("#pop") && !e.target.closest("#bell")) $("#pop")?.classList.add("hidden");
+      if (!e.target.closest("#account-menu") && !e.target.closest("#profile-menu")) {
+        $("#account-menu")?.classList.add("hidden");
+        $("#profile-menu")?.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setNavOpen(false);
+    });
+    S.shellListeners = true;
+  }
   api("/api/auth/demo-users").then(({ users, password }) => {
     const sel = $("#switch");
     if (!sel) return;
     if (!users.length) return sel.remove();
-    sel.innerHTML = `<option value="">Switch person (demo)…</option>` + users.map((u) => `<option value="${esc(u.username)}">${esc(u.name)} - ${esc(u.role_label)}</option>`).join("");
+    sel.innerHTML = `<option value="">Switch…</option>` + users.map((u) => `<option value="${esc(u.username)}">${esc(u.name)} - ${esc(u.role_label)}</option>`).join("");
     sel.onchange = async () => {
       if (!sel.value) return;
-      await api("/api/auth/login", { method: "POST", body: { username: sel.value, password } }).then((r) => { S.me = r.user; location.hash = ""; boot(); }).catch(fail);
+      try {
+        const r = await api("/api/auth/login", { method: "POST", body: { username: sel.value, password } });
+        closeModal(); S.me = r.user; location.hash = ""; await boot();
+      } catch (error) { fail(error); }
     };
-  });
+  }).catch(fail);
+}
+
+function setNavOpen(open) {
+  document.body.classList.toggle("nav-open", open);
+  $("#nav-toggle")?.setAttribute("aria-expanded", String(open));
+  $("#more-nav")?.setAttribute("aria-expanded", String(open));
+  $("#nav-toggle")?.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+}
+
+function accountDialog() {
+  const me = S.me;
+  modal(html`<div class="modal-head"><h2>Account</h2><button class="x" data-close aria-label="Close">×</button></div>
+    <dl class="account-details">
+      <div><dt>Name</dt><dd>${me.name}</dd></div>
+      <div><dt>Username</dt><dd>${me.username}</dd></div>
+      <div><dt>Role</dt><dd>${me.role_label}</dd></div>
+      ${me.department ? html`<div><dt>Department</dt><dd>${me.department}</dd></div>` : ""}
+      ${me.shift ? html`<div><dt>Shift</dt><dd>${me.shift}</dd></div>` : ""}
+    </dl>
+    <div class="row"><button class="btn" type="button" id="account-password">Change password</button></div>`);
+  $("#account-password").onclick = changePasswordDialog;
 }
 
 async function refreshAI() {
   try {
     const st = await api("/api/sop/status"); S.ai = st;
     const p = $("#aipill"); if (!p) return;
+    if (window.LEADDESK_PREVIEW_MODE) {
+      p.className = "pill ai-pill warn";
+      p.textContent = "Sample responses · no AI connected";
+      p.title = st.detail;
+      return;
+    }
     p.className = "pill ai-pill " + (st.online ? "ok" : "warn");
     p.innerHTML = st.online ? `<span class="dot"></span>Local AI online · ${esc(st.model)}` : `<span class="dot"></span>AI offline · quoting SOP sections`;
     p.title = st.online ? `Running on your machine via Ollama (${st.url})` : st.detail;
@@ -271,7 +541,9 @@ async function refreshNotes() {
     n.textContent = S.notes.unread; n.classList.toggle("hidden", !S.notes.unread);
     if (["lead", "admin"].includes(S.me.role)) {
       const c = await api("/api/sop/questions?status=needs_lead");
-      $$("[data-badge=needs]").forEach((b) => { b.textContent = c.counts.needs_lead || 0; b.classList.toggle("hidden", !c.counts.needs_lead); });
+      const needs = c.counts.needs_lead || 0;
+      $$("[data-badge=needs]").forEach((b) => { b.textContent = needs; b.classList.toggle("hidden", !needs); });
+      $$("[data-group-dot=knowledge]").forEach((dot) => dot.classList.toggle("hidden", !needs));
     }
   } catch { /* ignore */ }
 }
@@ -291,12 +563,33 @@ function route() {
   if (!S.me) return;
   const [path, qs] = (location.hash.replace(/^#\/?/, "") || HOME[S.me.role]).split("?");
   const params = Object.fromEntries(new URLSearchParams(qs || ""));
-  const allowed = (NAV[S.me.role] || []).flatMap(([, items]) => items.map((i) => i[0]));
+  const groups = NAV[S.me.role] || [];
+  const allowed = groups.flatMap((group) => group.items.map((item) => item[0]));
   const id = allowed.includes(path) ? path : HOME[S.me.role];
-  $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.nav === id));
+  $$(".nav a").forEach((a) => {
+    const active = a.dataset.nav === id;
+    a.classList.toggle("active", active);
+    if (active) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+  const selectedProject = params.department || params.task_type || "";
+  $$(".project-link").forEach((link) => {
+    const active = link.dataset.projectValue === selectedProject;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  $$(".mobile-tabs [data-mobile-nav]").forEach((link) => {
+    const active = link.dataset.mobileNav === id;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  setNavOpen(false);
   const view = $("#view");
   view.innerHTML = `<div class="empty">Loading…</div>`;
   Promise.resolve(VIEWS[id](view, params)).catch((e) => { view.innerHTML = html`<div class="alert bad">${e.message}</div>`.s; });
+  refreshProjects().catch(fail);
 }
 window.addEventListener("hashchange", route);
 
@@ -383,9 +676,12 @@ VIEWS.forum = drawForum;
 VIEWS.overview = async (el) => {
   const [w, qs] = await Promise.all([api("/api/workload"), api("/api/sop/questions?status=needs_lead")]);
   const t = w.totals;
-  const helpers = w.members.filter((m) => m.needs_help).sort((a, b) => b.overdue - a.overdue || b.open - a.open).slice(0, 5);
+  const peopleNeedingHelp = w.members.filter((m) => m.needs_help).sort((a, b) => b.overdue - a.overdue || b.open - a.open);
+  const helpers = peopleNeedingHelp.slice(0, 5);
   const maxOpen = Math.max(w.threshold + 2, ...w.members.map((m) => m.open));
   const chartMembers = w.members.slice(0, 7);
+  const maxOverdue = Math.max(4, ...chartMembers.map((m) => m.overdue));
+  const chartTicks = (max) => [max, Math.round(max * .75), Math.round(max * .5), Math.round(max * .25), 0];
   el.innerHTML = html`
   <div class="page-head">
     <div class="grow"><h1>Good ${nowServer().getHours() < 12 ? "morning" : nowServer().getHours() < 17 ? "afternoon" : "evening"}, ${S.me.name.split(" ")[0]}</h1>
@@ -404,22 +700,28 @@ VIEWS.overview = async (el) => {
       <header class="panel-head">
         <div><h2>Team workload</h2><p>Open tasks by team member</p></div>
         <div class="seg view-tabs" id="workload-tabs">
-          <button class="on" data-chart="open">Open</button>
-          <button data-chart="overdue">Overdue</button>
+          <button class="on" type="button" data-chart="open" aria-pressed="true">Open</button>
+          <button type="button" data-chart="overdue" aria-pressed="false">Overdue</button>
         </div>
       </header>
       <div class="chart-shell">
-        <div class="chart-y"><span>${maxOpen}</span><span>${Math.round(maxOpen * .75)}</span><span>${Math.round(maxOpen * .5)}</span><span>${Math.round(maxOpen * .25)}</span><span>0</span></div>
+        <div class="chart-y">${chartTicks(maxOpen).map((tick) => html`<span>${tick}</span>`)}</div>
         <div class="bar-chart" id="bar-chart">
           ${chartMembers.map((m) => html`
-            <button class="bar-item" data-member="${m.id}" title="${m.name}: ${m.open} open tasks">
+            <button class="bar-item" type="button" data-member="${m.id}" data-name="${m.name}" aria-label="${m.name}: ${m.open} open tasks" title="${m.name}: ${m.open} open tasks">
               <span class="bar-track"><span class="bar-fill ${m.overloaded ? "bar-danger" : m.open >= w.threshold - 1 ? "bar-warn" : ""}" data-open="${m.open}" data-overdue="${m.overdue}" style="height:${Math.max(7, (m.open / maxOpen) * 100)}%"></span></span>
-              <span class="bar-name">${m.name.split(" ")[0]}<small>${m.open}</small></span>
+              <span class="bar-name">${m.name.split(" ")[0]} ${m.name.split(" ").slice(-1)[0][0]}<small>${m.open}</small></span>
             </button>
           `)}
         </div>
       </div>
-      <footer class="panel-foot"><span><i class="legend-dot normal"></i>Within capacity</span><span><i class="legend-dot warning"></i>Near limit</span><span><i class="legend-dot danger"></i>Overloaded</span><button class="text-action" id="show-all">View all people</button></footer>
+      <footer class="panel-foot">
+        <span data-chart-legend="open"><i class="legend-dot normal"></i>Within capacity</span>
+        <span data-chart-legend="open"><i class="legend-dot warning"></i>Near limit</span>
+        <span data-chart-legend="open"><i class="legend-dot danger"></i>Overloaded</span>
+        <span class="hidden" data-chart-legend="overdue"><i class="legend-dot danger"></i>Has overdue tasks</span>
+        <button class="text-action" id="show-all">View all people</button>
+      </footer>
     </section>
     <aside class="dashboard-side">
       <section class="panel attention-panel">
@@ -448,16 +750,50 @@ VIEWS.overview = async (el) => {
   $$("[data-task]", el).forEach((r) => (r.onclick = () => openTask(+r.dataset.task, () => route())));
   $("#newt").onclick = () => taskForm(null, () => route());
   $("#exp").onclick = () => exportMenu();
-  $("#show-all").onclick = () => (location.hash = "#/board");
+  const showPeople = (title, people, description) => {
+    const ov = modal(html`
+      <div class="modal-head"><h2>${title}</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+      <p class="muted small">${description}</p>
+      ${people.length ? html`<div class="people-list">${people.map((m) => html`
+        <button class="people-list-row" type="button" data-person="${m.id}" aria-label="View tasks for ${m.name}">
+          ${avatar(m.name, m.id)}
+          <span class="grow"><b>${m.name}</b><small>${m.open} open · ${m.overdue} overdue</small></span>
+          <span class="pill ${m.overloaded ? "bad" : m.open >= w.threshold - 1 ? "warn" : "ok"}">${m.overloaded ? "Overloaded" : m.open >= w.threshold - 1 ? "Near limit" : "Within capacity"}</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </button>`)}</div>` : html`<div class="empty-state">No people need attention</div>`}
+    `);
+    $$("[data-person]", ov).forEach((button) => {
+      button.onclick = () => {
+        closeModal();
+        location.hash = "#/board?member=" + button.dataset.person;
+      };
+    });
+  };
+  $("#show-all").onclick = () => showPeople("All team members", w.members, "Choose a person to see their tasks on the board.");
   $("#view-risk").onclick = () => (location.hash = "#/board");
-  $("#attention-next").onclick = () => (location.hash = "#/board");
+  $("#attention-next").onclick = () => showPeople("People needing attention", peopleNeedingHelp, "People with overdue work or workload above the team limit.");
   $$("#workload-tabs button", el).forEach((tab) => tab.onclick = () => {
-    $$("#workload-tabs button", el).forEach((item) => item.classList.toggle("on", item === tab));
     const metric = tab.dataset.chart;
+    const max = metric === "open" ? maxOpen : maxOverdue;
+    const ticks = chartTicks(max);
+    $$("#workload-tabs button", el).forEach((item) => {
+      const selected = item === tab;
+      item.classList.toggle("on", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
+    $$("[data-chart-legend]", el).forEach((item) => item.classList.toggle("hidden", item.dataset.chartLegend !== metric));
+    $(".workload-panel .panel-head p", el).textContent = metric === "open" ? "Open tasks by team member" : "Overdue tasks by team member";
+    $$(".chart-y span", el).forEach((tick, index) => { tick.textContent = ticks[index]; });
     $$(".bar-fill", el).forEach((bar) => {
       const value = +bar.dataset[metric];
-      bar.style.height = `${Math.max(metric === "overdue" && value === 0 ? 3 : 7, (value / (metric === "open" ? maxOpen : Math.max(1, ...chartMembers.map((m) => m.overdue)))) * 100)}%`;
+      const item = bar.closest(".bar-item");
+      const name = item.querySelector(".bar-name small");
+      const label = metric === "open" ? "open tasks" : "overdue tasks";
+      bar.style.height = `${value ? Math.max(7, (value / max) * 100) : 0}%`;
       bar.className = `bar-fill ${metric === "overdue" ? (value > 0 ? "bar-danger" : "") : bar.dataset.open >= w.threshold - 1 ? "bar-warn" : ""}`;
+      name.textContent = value;
+      item.title = `${item.dataset.name}: ${value} ${label}`;
+      item.setAttribute("aria-label", `${item.dataset.name}: ${value} ${label}`);
     });
   });
 };
@@ -474,27 +810,39 @@ VIEWS.board = async (el, params) => {
   const M = S.meta;
   el.innerHTML = html`
   <div class="page-head">
-    <div class="grow"><h1>Task board</h1><p>Drag a card to change its status. Click a card for details and history.</p></div>
+    <div class="grow"><h1>${params.task_type ? `Task board · ${params.task_type}` : "Task board"}</h1><p>Drag a card to change its status. Click a card for details and history.</p></div>
     <button class="btn primary" id="newt">New task</button>
   </div>
+  ${params.task_type ? html`<p class="filter-context">Showing ${params.task_type} <a href="#/board">Clear queue filter</a></p>` : ""}
   <div class="card" style="padding:12px;margin-bottom:14px">
     <div class="row">
       <input class="input grow" id="fq" placeholder="Search tasks…" style="min-width:180px">
       <select class="input" id="fm"><option value="">Everyone</option><option value="none">Not assigned</option>${M.members.map((m) => html`<option value="${m.id}">${m.name} (${m.shift})</option>`)}</select>
       <select class="input" id="ft"><option value="">All task types</option>${M.task_types.map((t) => html`<option>${t}</option>`)}</select>
       <select class="input" id="fp"><option value="">Any priority</option>${M.priorities.map((p) => html`<option value="${p}">${p}</option>`)}</select>
-      <div class="seg" id="fw"><button data-w="" class="on">All</button><button data-w="overdue">Overdue</button><button data-w="today">Due today</button></div>
+      <div class="seg" id="fw" aria-label="Task filters">
+        <button type="button" data-w="" class="on" aria-pressed="true">All</button>
+        <button type="button" data-w="overdue" aria-pressed="false">Overdue</button>
+        <button type="button" data-w="today" aria-pressed="false">Due today</button>
+        <button type="button" data-w="escalated" aria-pressed="false">Escalated</button>
+      </div>
     </div>
   </div>
   <div class="board" id="board"></div>`;
   if (params.member) $("#fm").value = params.member;
+  if (M.task_types.includes(params.task_type)) $("#ft").value = params.task_type;
   if (params.filter === "unassigned") $("#fm").value = "none";
-  let when = ["overdue", "today"].includes(params.filter) ? params.filter : "";
-  $$("#fw button").forEach((b) => b.classList.toggle("on", b.dataset.w === when));
+  let when = ["overdue", "today", "escalated"].includes(params.filter) ? params.filter : "";
+  $$("#fw button").forEach((b) => {
+    const selected = b.dataset.w === when;
+    b.classList.toggle("on", selected);
+    b.setAttribute("aria-pressed", String(selected));
+  });
   const draw = () => {
     const fq = $("#fq").value.toLowerCase(), fm = $("#fm").value, ft = $("#ft").value, fp = $("#fp").value;
     const list = tasks.filter((t) => (!fq || t.title.toLowerCase().includes(fq)) && (!fm || (fm === "none" ? !t.assignee_id : String(t.assignee_id) === fm))
-      && (!ft || t.task_type === ft) && (!fp || t.priority === fp) && (!when || (when === "overdue" ? t.overdue : t.due_today)));
+      && (!ft || t.task_type === ft) && (!fp || t.priority === fp)
+      && (!when || (when === "overdue" ? t.overdue : when === "today" ? t.due_today : t.status === "escalated")));
     $("#board").innerHTML = M.statuses.map((s) => {
       const items = list.filter((t) => t.status === s).sort((a, b) => (s === "done" ? b.deadline.localeCompare(a.deadline) : a.deadline.localeCompare(b.deadline)));
       return html`<div class="col" data-status="${s}">
@@ -528,7 +876,15 @@ VIEWS.board = async (el, params) => {
   };
   const reload = async () => { const r = await api("/api/tasks"); tasks.splice(0, tasks.length, ...r.tasks); draw(); };
   ["#fq", "#fm", "#ft", "#fp"].forEach((s) => ($(s).oninput = draw));
-  $$("#fw button").forEach((b) => (b.onclick = () => { when = b.dataset.w; $$("#fw button").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
+  $$("#fw button").forEach((b) => (b.onclick = () => {
+    when = b.dataset.w;
+    $$("#fw button").forEach((item) => {
+      const selected = item === b;
+      item.classList.toggle("on", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
+    draw();
+  }));
   $("#newt").onclick = () => taskForm(null, reload);
   draw();
   if (params.task) openTask(+params.task, reload);
@@ -599,13 +955,20 @@ async function openTask(id, done) {
     <ul class="timeline">${events.map((e) => html`<li><b>${e.actor_name || "System"}</b> ${describeEvent(e)}
       <div class="muted tiny">${fmtDT(e.at)}</div>${e.note ? html`<div class="small" style="margin-top:3px">“${e.note}”</div>` : ""}</li>`)}</ul>`.s);
   $$("[data-st]", ov).forEach((b) => (b.onclick = async () => {
-    let note = null;
     if (b.dataset.st === "escalated") {
-      note = prompt("What is blocking you? (the team lead will see this)");
-      if (note === null) return;
-      if (!note.trim() && !isLead) return toast("Please say why you are escalating", "bad");
+      reasonModal({
+        title: "Escalate task",
+        description: "Tell your team lead what is blocking the work.",
+        label: "What is blocking you?",
+        submitLabel: "Escalate task",
+        required: !isLead,
+        onSubmit: (note) => api(`/api/tasks/${id}`, { method: "PATCH", body: { status: b.dataset.st, note } }),
+        onSuccess: () => { toast("Updated", "ok"); done && done(); },
+        onCancel: () => openTask(id, done),
+      });
+      return;
     }
-    try { await api(`/api/tasks/${id}`, { method: "PATCH", body: { status: b.dataset.st, note } }); closeModal(); toast("Updated", "ok"); done && done(); } catch (er) { fail(er); }
+    try { await api(`/api/tasks/${id}`, { method: "PATCH", body: { status: b.dataset.st, note: null } }); closeModal(); toast("Updated", "ok"); done && done(); } catch (er) { fail(er); }
   }));
   const ed = $("#edit", ov); if (ed) ed.onclick = () => taskForm(t, done);
 }
@@ -621,13 +984,16 @@ function describeEvent(e) {
 // ------------------------------------------------------------------ my tasks (member)
 VIEWS["my-tasks"] = async (el, params) => {
   const { tasks } = await api("/api/tasks?mine=true");
-  const open = tasks.filter((t) => t.status !== "done");
-  const done = tasks.filter((t) => t.status === "done").slice(-5).reverse();
+  const taskType = params.task_type || "";
+  const scopedTasks = tasks.filter((task) => !taskType || task.task_type === taskType);
+  const open = scopedTasks.filter((t) => t.status !== "done");
+  const done = scopedTasks.filter((t) => t.status === "done").slice(-5).reverse();
   const order = (t) => (t.overdue ? 0 : t.due_today ? 1 : 2);
   open.sort((a, b) => order(a) - order(b) || a.deadline.localeCompare(b.deadline));
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>My tasks</h1><p>${open.length} to do${open.filter((t) => t.overdue).length ? ` · ${open.filter((t) => t.overdue).length} overdue` : ""}. Stuck? Press “Need help” or ask the SOPs.</p></div>
+  <div class="page-head"><div class="grow"><h1>${taskType ? "My tasks · " + taskType : "My tasks"}</h1><p>${open.length} to do${open.filter((t) => t.overdue).length ? ` · ${open.filter((t) => t.overdue).length} overdue` : ""}. Stuck? Press “Need help” or ask the SOPs.</p></div>
     <a class="btn" href="#/assistant">Open SOP assistant</a></div>
+  ${taskType ? html`<p class="filter-context">Showing ${taskType} <a href="#/my-tasks">Clear queue filter</a></p>` : ""}
   <div class="stack">
     ${open.length ? open.map((t) => html`    <div class="card mytask ${t.overdue ? "overdue" : t.due_today ? "today" : ""}">
       <div><div class="row" style="gap:8px;margin-bottom:6px">${statusPill(t.status)}${prioPill(t.priority)}<span class="pill">${t.task_type}</span></div>
@@ -641,9 +1007,18 @@ VIEWS["my-tasks"] = async (el, params) => {
     ${done.length ? html`<h3 class="muted" style="margin-top:24px">Recently finished</h3>${done.map((t) => html`<div class="card row" style="padding:10px 16px">${statusPill("done")}<span class="grow">${t.title}</span><span class="muted small">${fmtDT(t.done_at || t.deadline)}</span></div>`)}` : ""}
   </div>`;
   $$("[data-st]", el).forEach((b) => (b.onclick = async () => {
-    let note = null;
-    if (b.dataset.st === "escalated") { note = prompt("What is blocking you? Your team lead will see this."); if (!note) return; }
-    try { await api(`/api/tasks/${b.dataset.id}`, { method: "PATCH", body: { status: b.dataset.st, note } }); toast(b.dataset.st === "escalated" ? "Sent to your team lead" : "Updated", "ok"); route(); } catch (e) { fail(e); }
+    if (b.dataset.st === "escalated") {
+      reasonModal({
+        title: "Ask for help",
+        description: "Your team lead will see this note with the task.",
+        label: "What is blocking you?",
+        submitLabel: "Send to team lead",
+        onSubmit: (note) => api(`/api/tasks/${b.dataset.id}`, { method: "PATCH", body: { status: b.dataset.st, note } }),
+        onSuccess: () => { toast("Sent to your team lead", "ok"); route(); },
+      });
+      return;
+    }
+    try { await api(`/api/tasks/${b.dataset.id}`, { method: "PATCH", body: { status: b.dataset.st, note: null } }); toast("Updated", "ok"); route(); } catch (e) { fail(e); }
   }));
   $$("[data-open]", el).forEach((h) => (h.onclick = () => openTask(+h.dataset.open, route)));
   if (params.task) openTask(+params.task, route);
@@ -668,7 +1043,7 @@ VIEWS.assistant = async (el) => {
   const { questions } = await api("/api/sop/my-questions");
   const docs = (await api("/api/sop/docs")).docs;
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>Ask the SOPs</h1><p>Answers come only from the ${docs.length} SOP document(s) your team lead uploaded, with the source. You can ask in English, हिन्दी or ગુજરાતી.</p></div></div>
+  <div class="page-head"><div class="grow"><h1>Ask the SOPs</h1><p>${window.LEADDESK_PREVIEW_MODE ? `Try sample answers based on ${docs.length} example SOP document(s). Nothing is sent to an AI service.` : `Answers come only from the ${docs.length} SOP document(s) your team lead uploaded, with the source. You can ask in English, हिन्दी or ગુજરાતી.`}</p></div></div>
   <div class="chat" id="chat"></div>
   <div class="ask-box"><input class="input" id="qin" placeholder="Type your question, e.g. What do I do when error 402 appears?" maxlength="600"><button class="btn primary big" id="qgo">Ask</button></div>
   <div class="chips" id="chips">${SUGGEST.map((s) => html`<button class="chip">${s}</button>`)}</div>`;
@@ -731,7 +1106,7 @@ VIEWS["needs-lead"] = async (el, params) => {
 VIEWS.sops = async (el) => {
   const { docs } = await api("/api/sop/docs");
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>SOP library</h1><p>Upload PDF or Word SOPs. They are split into sections and indexed; the assistant answers only from these.</p></div></div>
+  <div class="page-head"><div class="grow"><h1>SOP library</h1><p>${window.LEADDESK_PREVIEW_MODE ? "Browse sample procedures. File uploads and edits are temporary and are not stored." : "Upload PDF or Word SOPs. They are split into sections and indexed; the assistant answers only from these."}</p></div></div>
   <div class="card" style="margin-bottom:16px">
     <form id="up" class="row"><input type="file" name="file" accept=".pdf,.docx" class="input grow" required><button class="btn primary">⬆ Upload and index</button></form>
     <div class="muted small" style="margin-top:6px">Uploading a file with the same name replaces the old version.</div>
@@ -743,7 +1118,7 @@ VIEWS.sops = async (el) => {
   ${docs.length ? "" : html`<div class="empty">No SOPs yet. Upload one above.</div>`}</div>`;
   $("#up").onsubmit = async (e) => {
     e.preventDefault(); const btn = $("button", e.target); btn.disabled = true; btn.textContent = "Indexing…";
-    try { const r = await api("/api/sop/docs", { method: "POST", body: new FormData(e.target) }); toast(`Indexed “${r.title}” - ${r.sections} sections`, "ok"); route(); }
+    try { const r = await api("/api/sop/docs", { method: "POST", body: new FormData(e.target) }); toast(window.LEADDESK_PREVIEW_MODE ? `Sample SOP added for this session (${r.sections} sections).` : `Indexed “${r.title}” - ${r.sections} sections`, "ok"); route(); }
     catch (er) { fail(er); btn.disabled = false; btn.textContent = "⬆ Upload and index"; }
   };
   $$("[data-del]", el).forEach((b) => (b.onclick = async () => { if (!confirm("Remove this SOP? The assistant will stop using it.")) return; await api(`/api/sop/docs/${b.dataset.del}`, { method: "DELETE" }).catch(fail); route(); }));
@@ -766,12 +1141,15 @@ function highlight(text, q) {
 }
 const typePill = (d) => html`<span class="pill ${d.doc_type === "other" ? "" : "accent"}" title="${d.type_reason || ""}">${d.doc_type_label}</span>${d.doc_type_source === "rule" ? html` <span class="muted tiny">auto</span>` : html` <span class="muted tiny">✎ set by hand</span>`}`;
 
-VIEWS.vault = async (el) => {
+VIEWS.vault = async (el, params = {}) => {
   const [meta, list] = await Promise.all([api("/api/vault/meta"), api("/api/vault/docs")]);
+  const department = params.department || "";
+  const scopedDocs = list.docs.filter((doc) => !department || doc.department === department);
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>${meta.can_upload ? "Document vault" : "My documents"}</h1>
-    <p>Encrypted at rest (AES-256). You can see: <span class="pill accent">${meta.scope}</span> · every open, download and search is logged.</p></div>
+  <div class="page-head"><div class="grow"><h1>${department ? `Vault · ${department}` : window.LEADDESK_PREVIEW_MODE && S.me.role === "lead" ? "Team documents" : meta.can_upload ? "Document vault" : "My documents"}</h1>
+    <p>${window.LEADDESK_PREVIEW_MODE ? "Sample documents only. No files are uploaded or stored." : "Encrypted at rest (AES-256)."} You can see: <span class="pill accent">${meta.scope}</span>${window.LEADDESK_PREVIEW_MODE ? "" : " · every open, download and search is logged."}</p></div>
     ${meta.can_upload ? html`<button class="btn primary" id="upb">⬆ Upload document</button>` : ""}</div>
+  ${department ? html`<p class="filter-context">Showing ${department} <a href="#/vault">Clear department filter</a></p>` : ""}
   <div class="card" style="margin-bottom:16px">
     <div class="row"><input class="input grow" id="vq" placeholder="Search inside documents - including scanned images, e.g.  relocation bonus" style="font-size:16px;padding:12px">
       <button class="btn primary big" id="vgo">🔎 Search</button></div>
@@ -787,7 +1165,7 @@ VIEWS.vault = async (el) => {
   ${meta.is_admin ? html`<div class="card" style="margin-top:16px" id="delreq"></div>` : ""}`;
   const draw = () => {
     const t = $("#vt").value;
-    const rows = list.docs.filter((d) => !t || d.doc_type === t);
+    const rows = scopedDocs.filter((d) => !t || d.doc_type === t);
     $("#vtb").innerHTML = rows.map((d) => html`<tr class="click" data-doc="${d.id}"><td class="muted">${d.id}</td><td><b>${d.employee_name}</b><div class="muted tiny">${d.employee_id} · ${d.department}</div></td>
       <td>${typePill(d)}</td><td>${d.original_name} ${d.ocr_used ? html`<span class="pill info" title="Text read with OCR">scan · OCR</span>` : ""}</td>
       <td class="small">${fmtDT(d.uploaded_at)}<div class="muted tiny">${d.uploaded_by_name || ""}</div></td>
@@ -801,7 +1179,7 @@ VIEWS.vault = async (el) => {
     lastSearch = q;
     try {
       const r = await api("/api/vault/search?qs=" + encodeURIComponent(q));
-      $("#vres").innerHTML = html`<div class="muted small" style="margin:12px 0 6px">${r.results.length} result(s) for “${q}” within ${r.scope}. This search was logged.</div>
+      $("#vres").innerHTML = html`<div class="muted small" style="margin:12px 0 6px">${r.results.length} result(s) for “${q}” within ${r.scope}.${window.LEADDESK_PREVIEW_MODE ? " Sample results; searches are not logged." : " This search was logged."}</div>
         ${r.results.map((x) => html`<div class="card click" style="padding:12px;margin-bottom:8px;cursor:pointer" data-doc="${x.doc.id}">
           <div class="row" style="gap:8px"><b>${x.doc.original_name}</b>${typePill(x.doc)}${x.doc.ocr_used ? html`<span class="pill info">found inside a scan</span>` : ""}<span class="muted small">${x.doc.employee_id}</span></div>
           ${x.snippets.map((s) => html`<div class="small" style="margin-top:6px">${raw(s)}</div>`)}</div>`)}`.s;
@@ -834,7 +1212,7 @@ function uploadForm(meta) {
         <label class="f">Document type <select class="input" name="doc_type"><option value="">Detect automatically</option>${Object.entries(meta.doc_types).map(([k, v]) => html`<option value="${k}">${v}</option>`)}</select></label>
         <label class="f">Keep until (retention) <input class="input" type="date" name="retention_until"></label>
       </div>
-      <div class="alert small">The file is encrypted before it is written to disk. Scans are read with OCR so their text becomes searchable.</div>
+      <div class="alert small">${window.LEADDESK_PREVIEW_MODE ? "Uploads are simulated. No file is stored or processed." : "The file is encrypted before it is written to disk. Scans are read with OCR so their text becomes searchable."}</div>
       <div class="row"><span class="grow"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Encrypt and upload</button></div>
     </form>`.s);
   $$("[data-close]", ov).forEach((b) => (b.onclick = closeModal));
@@ -848,7 +1226,7 @@ function uploadForm(meta) {
     e.preventDefault(); const b = $("button.primary", e.target); b.disabled = true; b.textContent = "Encrypting and reading…";
     try {
       const r = await api("/api/vault/docs", { method: "POST", body: new FormData(e.target) });
-      closeModal(); toast(`Stored #${r.doc.id} as ${r.doc.doc_type_label}${r.doc.ocr_used ? " (OCR)" : ""}`, "ok"); route();
+      closeModal(); toast(window.LEADDESK_PREVIEW_MODE ? "Sample document added for this session; no file was stored." : `Stored #${r.doc.id} as ${r.doc.doc_type_label}${r.doc.ocr_used ? " (OCR)" : ""}`, "ok"); route();
     } catch (er) { fail(er); b.disabled = false; b.textContent = "Encrypt and upload"; }
   };
 }
@@ -865,7 +1243,8 @@ async function openDoc(id, meta) {
   }
   const d = r.doc;
   const src = `/api/vault/docs/${id}/file`;
-  const preview = d.mime.startsWith("image/") ? html`<img src="${src}" style="max-width:100%;border:1px solid var(--line);border-radius:8px">`
+  const preview = window.LEADDESK_PREVIEW_MODE ? html`<div class="empty">Sample file preview unavailable. The example text is shown alongside.</div>`
+    : d.mime.startsWith("image/") ? html`<img src="${src}" style="max-width:100%;border:1px solid var(--line);border-radius:8px">`
     : d.mime === "application/pdf" ? html`<iframe src="${src}" style="width:100%;height:520px;border:1px solid var(--line);border-radius:8px"></iframe>`
     : html`<div class="muted">No preview for this file type - see the text on the right or download it.</div>`;
   const canEdit = meta.can_upload;
@@ -881,15 +1260,23 @@ async function openDoc(id, meta) {
         ${canEdit ? html`<div><div class="muted small">Keep until</div><input class="input" type="date" id="ret" value="${d.retention_until || ""}"></div>` : ""}
         <div><div class="muted small">Text ${d.ocr_used ? "(read by OCR from the scan)" : ""}</div>
           <div class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--soft);padding:10px;border-radius:8px">${raw(highlight(r.text || "(no text)", lastSearch))}</div></div>
-        <div class="row"><a class="btn primary" href="${src}?download=true">Download watermarked copy</a>${canEdit ? html`<button class="btn danger" id="delr">Request deletion</button>` : ""}</div>
+        <div class="row">${window.LEADDESK_PREVIEW_MODE ? html`<button class="btn primary" type="button" disabled title="Downloads are not available in the preview">Download disabled in preview</button>` : html`<a class="btn primary" href="${src}?download=true">Download watermarked copy</a>`}${canEdit ? html`<button class="btn danger" id="delr">Request deletion</button>` : ""}</div>
         <div class="muted tiny">Opening this document was recorded in the audit log.</div>
       </div></div>`.s, { wide: true });
   if (canEdit) {
     $("#dt", ov).onchange = async (e) => { try { await api(`/api/vault/docs/${id}`, { method: "PATCH", body: { doc_type: e.target.value } }); toast("Type corrected", "ok"); } catch (er) { fail(er); } };
     $("#ret", ov).onchange = async (e) => { try { await api(`/api/vault/docs/${id}`, { method: "PATCH", body: { retention_until: e.target.value } }); toast("Retention saved", "ok"); } catch (er) { fail(er); } };
     $("#delr", ov).onclick = async () => {
-      const reason = prompt("Why should this document be deleted? A second administrator must approve."); if (reason === null) return;
-      try { await api(`/api/vault/docs/${id}/delete-request`, { method: "POST", body: { reason } }); toast("Deletion requested - waiting for a second approver", "ok"); } catch (er) { fail(er); }
+      reasonModal({
+        title: "Request document deletion",
+        description: "A second administrator must approve this request.",
+        label: "Reason for deletion",
+        submitLabel: "Request deletion",
+        required: false,
+        onSubmit: (reason) => api(`/api/vault/docs/${id}/delete-request`, { method: "POST", body: { reason } }),
+        onSuccess: () => { toast("Deletion requested - waiting for a second approver", "ok"); openDoc(id, meta); },
+        onCancel: () => openDoc(id, meta),
+      });
     };
   }
   ov._onClose = () => { if (location.hash.startsWith("#/vault")) route(); };
@@ -901,8 +1288,8 @@ VIEWS.audit = async (el, params) => {
   const r = await api("/api/vault/audit" + (f ? "?action=" + f : ""));
   const docs = (await api("/api/vault/docs")).docs;
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>Audit log</h1><p>Every upload, view, download and search. Append-only: the database refuses edits and deletes, and each entry is hash-chained to the previous one.</p></div>
-    <span class="pill ${r.chain.ok ? "ok" : "bad"}" style="font-size:14px;padding:6px 12px">${r.chain.ok ? `✔ Chain intact · ${r.chain.entries} entries` : `✖ Chain broken at #${r.chain.broken_at}`}</span></div>
+  <div class="page-head"><div class="grow"><h1>Audit log</h1><p>${window.LEADDESK_PREVIEW_MODE ? "Example activity only. This preview does not record access or verify an audit chain." : "Every upload, view, download and search. Append-only: the database refuses edits and deletes, and each entry is hash-chained to the previous one."}</p></div>
+    <span class="pill ${r.chain.ok ? "ok" : "bad"}" style="font-size:14px;padding:6px 12px">${r.chain.ok ? `${window.LEADDESK_PREVIEW_MODE ? "Sample chain" : "✔ Chain intact"} · ${r.chain.entries} entries` : `✖ Chain broken at #${r.chain.broken_at}`}</span></div>
   <div class="grid g-main">
     <div class="card">
       <div class="seg" id="af" style="margin-bottom:10px">${[["", "All"], ["denied", "Denied"], ["view", "Views"], ["download", "Downloads"], ["search", "Searches"], ["upload", "Uploads"]].map(([k, l]) => html`<button data-f="${k}" class="${k === f ? "on" : ""}">${l}</button>`)}</div>
@@ -911,8 +1298,8 @@ VIEWS.audit = async (el, params) => {
         <td><span class="pill ${e.outcome === "denied" ? "bad" : e.action === "download" ? "warn" : e.action === "upload" ? "ok" : ""}">${e.outcome === "denied" ? "DENIED " : ""}${e.action}</span></td>
         <td>${e.doc_id ? "#" + e.doc_id : "-"}</td><td class="small mono" style="max-width:320px;word-break:break-word">${e.detail || ""}</td></tr>`)}</tbody></table>
     </div>
-    <div class="card"><h2>🔬 What is on disk?</h2>
-      <p class="muted small">Pick a document to compare the stored file with the original. The stored file is AES-256-GCM ciphertext.</p>
+    <div class="card"><h2>🔬 ${window.LEADDESK_PREVIEW_MODE ? "Storage example" : "What is on disk?"}</h2>
+      <p class="muted small">${window.LEADDESK_PREVIEW_MODE ? "Illustrative values only. This preview does not read or decrypt any files." : "Pick a document to compare the stored file with the original. The stored file is AES-256-GCM ciphertext."}</p>
       <select class="input" id="sp" style="width:100%"><option value="">Choose a document…</option>${docs.map((d) => html`<option value="${d.id}">#${d.id} ${d.original_name}</option>`)}</select>
       <div id="spout" style="margin-top:12px"></div></div>
   </div>`;
@@ -921,9 +1308,9 @@ VIEWS.audit = async (el, params) => {
     if (!e.target.value) return;
     const p = await api(`/api/vault/storage/${e.target.value}`);
     $("#spout").innerHTML = html`<div class="stack small">
-      <div><b>Stored on disk</b> <span class="muted">(${p.path_on_disk}, ${p.stored_bytes} bytes)</span><div class="hex">${p.disk_head_hex}</div><div class="hex" style="margin-top:4px">${p.disk_head_text}</div></div>
-      <div><b>Original after decryption</b> <span class="muted">(${p.original_bytes} bytes)</span><div class="hex plain">${p.original_head_hex}</div><div class="hex plain" style="margin-top:4px">${p.original_head_text}</div></div>
-      <div class="alert ok">Entropy ${p.entropy_bits_per_byte} bits/byte (8.0 = random) · ${Math.round(p.printable_ratio * 100)}% printable · integrity check ${p.sha256_matches ? "✔" : "✖"}<br>${p.cipher}. Master key fingerprint <code>${p.key_fingerprint}</code> - the key lives outside the code and database.</div></div>`.s;
+      <div><b>${window.LEADDESK_PREVIEW_MODE ? "Sample encrypted bytes" : "Stored on disk"}</b> <span class="muted">(${p.path_on_disk}, ${p.stored_bytes} bytes)</span><div class="hex">${p.disk_head_hex}</div><div class="hex" style="margin-top:4px">${p.disk_head_text}</div></div>
+      <div><b>${window.LEADDESK_PREVIEW_MODE ? "Sample original bytes" : "Original after decryption"}</b> <span class="muted">(${p.original_bytes} bytes)</span><div class="hex plain">${p.original_head_hex}</div><div class="hex plain" style="margin-top:4px">${p.original_head_text}</div></div>
+      <div class="alert ${window.LEADDESK_PREVIEW_MODE ? "warn" : "ok"}">${window.LEADDESK_PREVIEW_MODE ? "Illustrative sample values; no file integrity check was performed." : html`Entropy ${p.entropy_bits_per_byte} bits/byte (8.0 = random) · ${Math.round(p.printable_ratio * 100)}% printable · integrity check ${p.sha256_matches ? "✔" : "✖"}<br>${p.cipher}. Master key fingerprint <code>${p.key_fingerprint}</code> - the key lives outside the code and database.`}</div></div>`.s;
   };
 };
 
@@ -934,7 +1321,7 @@ VIEWS.interviews = async (el, params) => {
   const b = await api("/api/iv/board?" + qs);
   let filt = params.status || "";
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>Interviews</h1><p>Candidates book from their own link; the system stops double booking. Times in ${b.time_zone}.</p></div>
+  <div class="page-head"><div class="grow"><h1>Interviews</h1><p>${window.LEADDESK_PREVIEW_MODE ? "Sample interview pipeline and candidate booking flow. No email or calendar invite is sent." : "Candidates book from their own link; the system stops double booking."} Times in ${b.time_zone}.</p></div>
     <button class="btn" id="outb">📬 Sent emails</button><a class="btn" href="/api/iv/export">⬇ Excel</a><button class="btn primary" id="addc">＋ Invite candidate</button></div>
   <div class="kpis">${Object.entries(IVS).map(([k, [l, c]]) => html`<div class="kpi click ${k === "feedback_pending" && b.counts[k] ? "bad" : ""}" data-k="${k}" style="${filt === k ? "border-color:var(--accent)" : ""}"><div class="v">${b.counts[k]}</div><div class="l">${l}</div></div>`)}</div>
   <div class="card">
@@ -948,9 +1335,12 @@ VIEWS.interviews = async (el, params) => {
       <td><b>${i.candidate_name}</b><div class="muted tiny">${i.candidate_email} · recruiter ${i.recruiter_name}</div></td>
       <td>${i.role_title}<div class="muted tiny">${i.round_name}${i.length_min ? ` · ${i.length_min} min` : ""}</div></td>
       <td>${i.interviewer_name || "-"}</td>
-      <td class="small">${i.start ? fmtDT(i.start) : "-"}${i.reschedule_count ? html`<div class="muted tiny">rescheduled ${i.reschedule_count}×</div>` : ""}</td>
+      <td class="small">${i.start ? fmtDT(i.start) : "-"}${i.reschedule_count ? html`<div class="muted tiny">rescheduled ${i.reschedule_count}×</div>` : ""}
+        ${i.calendar_sync && i.calendar_sync.status === "synced" ? html`<div class="muted tiny">Calendar synced</div>` : ""}
+        ${i.calendar_sync && i.calendar_sync.status === "failed" ? html`<div class="small bad">Calendar sync failed: ${i.calendar_sync.error}</div><button class="btn sm" data-calendar-retry="${i.id}">Retry sync</button>` : ""}</td>
       <td><span class="pill ${IVS[i.board_status][1]}">${IVS[i.board_status][0]}</span></td>
       <td class="num" style="white-space:nowrap">
+        ${window.LEADDESK_PREVIEW_MODE || S.me.role !== "hr" ? "" : html`<button class="btn sm" data-interview-notes="${i.id}">Notes</button>`}
         ${i.board_status === "invited" || i.board_status === "scheduled" || i.board_status === "rescheduled" ? html`<button class="btn sm" data-copy="${i.link}">🔗 Link</button>` : ""}
         ${i.start && i.status !== "invited" ? html`<a class="btn sm" href="/api/iv/interviews/${i.id}/ics">.ics</a>` : ""}
         ${i.board_status === "feedback_pending" ? html`<button class="btn sm warn" data-nudge="${i.id}">Remind</button>` : ""}
@@ -963,9 +1353,21 @@ VIEWS.interviews = async (el, params) => {
   $("#fr").onchange = () => nav({}); $("#fro").onchange = () => nav({});
   const clr = $("#clr"); if (clr) clr.onclick = () => nav({ status: "" });
   $$("[data-copy]", el).forEach((x) => (x.onclick = () => { navigator.clipboard?.writeText(x.dataset.copy); toast("Booking link copied", "ok"); window.open(x.dataset.copy, "_blank"); }));
-  $$("[data-nudge]", el).forEach((x) => (x.onclick = async () => { await api(`/api/iv/interviews/${x.dataset.nudge}/nudge`, { method: "POST" }).then(() => toast("Reminder sent to the interviewer", "ok")).catch(fail); }));
+  $$("[data-nudge]", el).forEach((x) => (x.onclick = async () => { await api(`/api/iv/interviews/${x.dataset.nudge}/nudge`, { method: "POST" }).then(() => toast(window.LEADDESK_PREVIEW_MODE ? "Reminder simulated; no email was sent." : "Reminder sent to the interviewer", "ok")).catch(fail); }));
   $$("[data-cancel]", el).forEach((x) => (x.onclick = async () => { if (!confirm("Cancel this interview? A cancellation invite is sent to both sides.")) return; await api(`/api/iv/interviews/${x.dataset.cancel}/cancel`, { method: "POST" }).then(() => { toast("Cancelled", "ok"); route(); }).catch(fail); }));
   $$("[data-fb]", el).forEach((x) => (x.onclick = () => showFeedback(+x.dataset.fb, x.dataset.name)));
+  $$("[data-interview-notes]", el).forEach((x) => (x.onclick = () => {
+    const interview = b.interviews.find((i) => i.id === +x.dataset.interviewNotes);
+    if (interview) showInterviewNotes(interview);
+  }));
+  $$("[data-calendar-retry]", el).forEach((x) => (x.onclick = async () => {
+    x.disabled = true;
+    try {
+      const result = await api(`/api/iv/interviews/${x.dataset.calendarRetry}/calendar-sync`, { method: "POST" });
+      toast(result.status === "synced" ? "Calendar event synced" : "Calendar sync status updated", "ok");
+      route();
+    } catch (e) { x.disabled = false; fail(e); }
+  }));
   $("#addc").onclick = () => candidateForm();
   $("#outb").onclick = () => showOutbox();
 };
@@ -983,7 +1385,7 @@ function candidateForm() {
     e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); f.length_min = f.length_min ? +f.length_min : null;
     try {
       const r = await api("/api/iv/candidates", { method: "POST", body: f });
-      $("#cout", ov).innerHTML = html`<div class="alert ok" style="margin-top:12px"><b>Link created and emailed.</b><br><a href="${r.link}" target="_blank">${r.link}</a></div>`.s;
+      $("#cout", ov).innerHTML = html`<div class="alert ok" style="margin-top:12px"><b>${window.LEADDESK_PREVIEW_MODE ? "Sample booking link created. No email was sent." : "Link created and emailed."}</b><br><a href="${r.link}" target="_blank">${r.link}</a></div>`.s;
       $("#cf", ov).remove(); ov._onClose = route;
     } catch (er) { fail(er); }
   };
@@ -992,7 +1394,7 @@ function candidateForm() {
 async function showOutbox() {
   const r = await api("/api/iv/outbox");
   modal(html`<div class="modal-head"><h2>Sent emails</h2><button class="x" data-close>×</button></div>
-    <p class="muted small">Every email the scheduler sends. With Docker they are also delivered to the local test mail server: <a href="${r.mail_ui}" target="_blank">${r.mail_ui}</a></p>
+    <p class="muted small">${window.LEADDESK_PREVIEW_MODE ? "Example messages only. This preview does not send emails." : html`Every email the scheduler sends. With Docker they are also delivered to the local test mail server: <a href="${r.mail_ui}" target="_blank">${r.mail_ui}</a>`}</p>
     <table class="t"><tbody>${r.messages.map((m) => html`<tr><td class="small">${fmtDT(m.at)}</td><td><b>${m.subject}</b><div class="muted tiny">to ${m.to_addr} · ${m.kind}</div>
       <details class="tiny"><summary>Body</summary><pre style="white-space:pre-wrap">${m.body}</pre></details></td>
       <td>${m.delivered ? html`<span class="pill ok">delivered</span>` : html`<span class="pill" title="${m.error || ""}">outbox only</span>`}</td>
@@ -1012,6 +1414,83 @@ async function showFeedback(cid, name) {
   } catch (e) { fail(e); }
 }
 
+async function showInterviewNotes(interview) {
+  const viewerId = S.me?.id;
+  try {
+    const result = await api(`/api/iv/interviews/${interview.id}/notes`);
+    if (!S.me || S.me.id !== viewerId) return;
+    const ov = modal(html`<div class="modal-head"><h2>Interview notes · ${interview.candidate_name}</h2><button class="x" data-close>×</button></div>
+      <p class="muted small">${interview.role_title} · ${interview.round_name}. Visible to HR and the assigned interviewer only; candidates cannot see these notes.</p>
+      <div id="interview-note-list" class="stack"></div>
+      <form id="interview-note-form" class="stack" style="margin-top:16px">
+        <input type="hidden" id="interview-note-id">
+        <label class="f" for="interview-note-body">Add a note
+          <textarea class="input" id="interview-note-body" rows="4" maxlength="5000" required aria-describedby="interview-note-help"></textarea>
+        </label>
+        <div id="interview-note-help" class="muted tiny">Up to 5,000 characters. Notes are for internal interview preparation and follow-up.</div>
+        <div class="row"><button type="button" class="btn hidden" id="cancel-note-edit">Cancel edit</button><span class="grow"></span><button class="btn primary" id="save-interview-note">Add note</button></div>
+      </form>`.s, { wide: true });
+
+    let notes = result.notes;
+    const list = $("#interview-note-list", ov);
+    const form = $("#interview-note-form", ov);
+    const body = $("#interview-note-body", ov);
+    const noteId = $("#interview-note-id", ov);
+    const save = $("#save-interview-note", ov);
+    const cancelEdit = $("#cancel-note-edit", ov);
+
+    function renderNotes() {
+      list.innerHTML = notes.length ? html`${notes.map((n) => html`<article class="card">
+        <div class="row"><b>${n.author_name}</b><span class="muted tiny">${fmtDT(n.created_at)}</span><span class="grow"></span>
+          ${n.can_edit ? html`<button type="button" class="btn sm" data-edit-note="${n.id}">Edit</button><button type="button" class="btn sm danger" data-delete-note="${n.id}">Delete</button>` : ""}
+        </div><p class="small" style="white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:0">${n.body}</p>
+      </article>`)}`.s : html`<div class="empty">No notes yet. Add the first internal note below.</div>`.s;
+      $$("[data-edit-note]", list).forEach((button) => (button.onclick = () => {
+        const note = notes.find((item) => item.id === +button.dataset.editNote);
+        if (!note) return;
+        noteId.value = note.id;
+        body.value = note.body;
+        save.textContent = "Save changes";
+        cancelEdit.classList.remove("hidden");
+        body.focus();
+      }));
+      $$("[data-delete-note]", list).forEach((button) => (button.onclick = async () => {
+        if (!confirm("Delete this note? This cannot be undone.")) return;
+        try {
+          await api(`/api/iv/notes/${button.dataset.deleteNote}`, { method: "DELETE" });
+          notes = (await api(`/api/iv/interviews/${interview.id}/notes`)).notes;
+          renderNotes();
+          toast("Note deleted", "ok");
+        } catch (e) { fail(e); }
+      }));
+    }
+
+    function clearEdit() {
+      form.reset();
+      noteId.value = "";
+      save.textContent = "Add note";
+      cancelEdit.classList.add("hidden");
+    }
+
+    cancelEdit.onclick = clearEdit;
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const id = noteId.value;
+      try {
+        await api(id ? `/api/iv/notes/${id}` : `/api/iv/interviews/${interview.id}/notes`, {
+          method: id ? "PATCH" : "POST",
+          body: { body: body.value },
+        });
+        clearEdit();
+        notes = (await api(`/api/iv/interviews/${interview.id}/notes`)).notes;
+        renderNotes();
+        toast(id ? "Note updated" : "Note added", "ok");
+      } catch (e) { fail(e); }
+    };
+    renderNotes();
+  } catch (e) { fail(e); }
+}
+
 // ------------------------------------------------------------------ interviewer views
 VIEWS["my-interviews"] = async (el) => {
   const { interviews } = await api("/api/iv/mine");
@@ -1022,6 +1501,7 @@ VIEWS["my-interviews"] = async (el) => {
     <div class="muted small">${fmtDT(i.start)} · ${i.location && i.location.startsWith("http") ? html`<a href="${i.location}" target="_blank">join link</a>` : i.location}</div></div>
     <span class="pill ${IVS[i.board_status][1]}">${IVS[i.board_status][0]}</span>
     <a class="btn sm" href="/api/iv/interviews/${i.id}/ics">📅 .ics</a>
+    ${window.LEADDESK_PREVIEW_MODE ? "" : html`<button class="btn sm" data-interview-notes="${i.id}">Notes</button>`}
     ${i.board_status === "feedback_pending" ? html`<button class="btn primary" data-give="${i.id}">Give feedback</button>` : ""}
     ${i.board_status === "completed" ? html`<button class="btn sm" data-see="${i.candidate_id}" data-name="${i.candidate_name}">Panel feedback</button>` : ""}</div>`;
   el.innerHTML = html`
@@ -1032,6 +1512,10 @@ VIEWS["my-interviews"] = async (el) => {
   <h2 style="margin-top:22px">Done</h2><div class="stack">${done.length ? done.map(row) : html`<div class="muted">None yet.</div>`}</div>`;
   $$("[data-give]", el).forEach((b) => (b.onclick = () => feedbackForm(interviews.find((i) => i.id === +b.dataset.give))));
   $$("[data-see]", el).forEach((b) => (b.onclick = () => showFeedback(+b.dataset.see, b.dataset.name)));
+  $$("[data-interview-notes]", el).forEach((b) => (b.onclick = () => {
+    const interview = interviews.find((i) => i.id === +b.dataset.interviewNotes);
+    if (interview) showInterviewNotes(interview);
+  }));
 };
 
 function feedbackForm(iv) {
@@ -1059,8 +1543,21 @@ VIEWS.availability = async (el) => {
   const tom = new Date(nowServer()); tom.setDate(tom.getDate() + 1);
   const byDay = {};
   r.slots.forEach((s) => (byDay[s.start.slice(0, 10)] ||= []).push(s));
+  const calendar = r.google_calendar;
   el.innerHTML = html`
   <div class="page-head"><div class="grow"><h1>My availability</h1><p>Add the times you can interview. Candidates only see open times. Times in ${r.time_zone}.</p></div></div>
+  ${window.LEADDESK_PREVIEW_MODE ? "" : html`<section class="card" aria-labelledby="google-calendar-title" style="margin-bottom:16px">
+    <div class="section-title"><h2 id="google-calendar-title">Google Calendar</h2><span class="grow"></span>
+      ${calendar && calendar.connected ? html`<span class="pill ok">Connected</span>` : html`<span class="pill">${calendar && calendar.configured ? "Not connected" : "Not configured"}</span>`}
+    </div>
+    ${calendar && calendar.connected
+      ? html`<p class="small">Connected to ${calendar.calendar_label || "your primary calendar"}. Busy times are checked before candidates see slots, and confirmed interviews are synced here.</p>
+        <button class="btn sm" id="google-disconnect">Disconnect calendar</button>`
+      : calendar && calendar.configured
+        ? html`<p class="small">Connect your own calendar to hide busy times and sync interview invitations, changes, and cancellations.</p>
+          <a class="btn sm primary" href="/api/iv/google/connect">Connect Google Calendar</a>`
+        : html`<p class="small">To enable calendar sync, configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI on the server, then restart the app.</p>`}
+  </section>`}
   <div class="card" style="margin-bottom:16px"><form id="sf" class="stack">
     <div class="form-grid">
       <label class="f">Day <input class="input" type="date" name="day" required value="${dateInput(tom)}"></label>
@@ -1073,12 +1570,23 @@ VIEWS.availability = async (el) => {
   <div class="stack">${Object.keys(byDay).length ? Object.entries(byDay).map(([d, ss]) => html`<div class="card"><h3>${fmtDT(d + "T00:00").split(",")[0]}</h3>
     <div class="row">${ss.map((s) => html`<span class="pill ${s.state === "booked" ? "ok" : s.state === "blocked" ? "" : "info"}" style="padding:6px 10px">
       ${fmtTime(parseLocal(s.start))}–${fmtTime(parseLocal(s.end))} · ${s.length_min}m ${s.state === "booked" ? "· " + s.candidate_name : s.state === "blocked" ? "· overlaps a booking" : ""}
-      ${s.state === "open" ? html`<button class="x" style="font-size:14px" data-rm="${s.id}" title="Remove">×</button>` : ""}</span>`)}</div></div>`) : html`<div class="card empty">No upcoming slots yet.</div>`}</div>`;
+      ${s.state === "calendar_blocked" ? "· busy on Google Calendar" : ""}
+      ${s.state === "open" || s.state === "calendar_blocked" ? html`<button class="x" style="font-size:14px" data-rm="${s.id}" title="Remove">×</button>` : ""}</span>`)}</div></div>`) : html`<div class="card empty">No upcoming slots yet.</div>`}</div>`;
   $("#sf").onsubmit = async (e) => {
     e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); f.length_min = +f.length_min; f.repeat_weeks = +f.repeat_weeks;
     try { const x = await api("/api/iv/slots", { method: "POST", body: f }); toast(`${x.created} slot(s) added${x.skipped ? `, ${x.skipped} skipped (past or overlapping)` : ""}`, "ok"); route(); } catch (er) { fail(er); }
   };
   $$("[data-rm]", el).forEach((b) => (b.onclick = async () => { await api(`/api/iv/slots/${b.dataset.rm}`, { method: "DELETE" }).catch(fail); route(); }));
+  const disconnect = $("#google-disconnect", el);
+  if (disconnect) disconnect.onclick = async () => {
+    if (!confirm("Disconnect Google Calendar? Existing events stay on your calendar, but future changes will no longer sync.")) return;
+    disconnect.disabled = true;
+    try {
+      await api("/api/iv/google/disconnect", { method: "POST" });
+      toast("Google Calendar disconnected", "ok");
+      route();
+    } catch (e) { disconnect.disabled = false; fail(e); }
+  };
 };
 
 // ------------------------------------------------------------------ proof
@@ -1088,19 +1596,19 @@ VIEWS.proof = async (el) => {
   const canRun = ["lead", "admin"].includes(S.me.role);
   const canRace = ["hr", "admin"].includes(S.me.role);
   el.innerHTML = html`
-  <div class="page-head"><div class="grow"><h1>How we know it works</h1><p>Live checks of the claims this app makes - run them yourself.</p></div></div>
+  <div class="page-head"><div class="grow"><h1>How we know it works</h1><p>${window.LEADDESK_PREVIEW_MODE ? "Sample results for the interactive preview. Live checks run only in the full app." : "Live checks of the claims this app makes - run them yourself."}</p></div></div>
   <div class="grid g2">
-    <div class="card"><div class="section-title"><h2>💬 SOP assistant test</h2><span class="grow"></span>${canRun ? html`<button class="btn primary" id="run">▶ Run test questions</button>` : ""}</div>
+    <div class="card"><div class="section-title"><h2>💬 SOP assistant test</h2><span class="grow"></span>${canRun ? html`<button class="btn primary" id="run">${window.LEADDESK_PREVIEW_MODE ? "Show sample results" : "▶ Run test questions"}</button>` : ""}</div>
       <div id="evbox">${evalBox(ev)}</div></div>
     <div class="stack">
       <div class="card"><h2>🤖 Local AI</h2><p>${p.ai.online ? html`<span class="proof-ok">Online</span> - model <code>${p.ai.model}</code> served by Ollama at <code>${p.ai.url}</code>. No question or document leaves this machine.`
-        : html`<span class="proof-bad">Offline</span> - ${p.ai.detail}. The assistant still answers by quoting the best SOP section.`}</p>
-        <p class="muted small">${p.sop_sections} SOP sections indexed · ${p.gaps} open SOP gaps</p></div>
-      <div class="card"><h2>🔐 Vault</h2><p>${p.vault_docs} documents stored encrypted (AES-256-GCM, one key per file, wrapped by a master key kept outside the code). ${p.scans} are scans made searchable with Tesseract OCR.</p>
-        <p>Audit chain: ${p.audit_chain.ok ? html`<span class="proof-ok">✔ intact (${p.audit_chain.entries} entries)</span>` : html`<span class="proof-bad">✖ broken</span>`}</p>
+        : window.LEADDESK_PREVIEW_MODE ? html`<span class="proof-bad">Not connected</span> - sample responses are used; no model is running.` : html`<span class="proof-bad">Offline</span> - ${p.ai.detail}. The assistant still answers by quoting the best SOP section.`}</p>
+        <p class="muted small">${p.sop_sections} ${window.LEADDESK_PREVIEW_MODE ? "sample SOP sections" : "SOP sections indexed"} · ${p.gaps} ${window.LEADDESK_PREVIEW_MODE ? "sample gaps" : "open SOP gaps"}</p></div>
+      <div class="card"><h2>🔐 Vault</h2><p>${window.LEADDESK_PREVIEW_MODE ? `${p.vault_docs} sample documents, including ${p.scans} example scans. No files are stored by this preview.` : `${p.vault_docs} documents stored encrypted (AES-256-GCM, one key per file, wrapped by a master key kept outside the code). ${p.scans} are scans made searchable with Tesseract OCR.`}</p>
+        <p>${window.LEADDESK_PREVIEW_MODE ? "Sample audit chain:" : "Audit chain:"} ${p.audit_chain.ok ? html`<span class="proof-ok">✔ ${window.LEADDESK_PREVIEW_MODE ? "sample" : "intact"} (${p.audit_chain.entries} entries)</span>` : html`<span class="proof-bad">✖ broken</span>`}</p>
         ${S.me.role === "admin" ? html`<a class="btn sm" href="#/audit">See ciphertext on disk →</a>` : ""}</div>
       <div class="card"><div class="section-title"><h2>🗓️ Double-booking guard</h2><span class="grow"></span>${canRace ? html`<button class="btn" id="race">⚡ Simulate a race</button>` : ""}</div>
-        <p class="small">Two candidates press “Book” on the same slot at the same moment. Bookings run in a locked database transaction and a unique index allows only one live booking per slot.</p><div id="raceout"></div></div>
+        <p class="small">${window.LEADDESK_PREVIEW_MODE ? "The sample simulates two candidates choosing the same time. It does not test a live database." : "Two candidates press “Book” on the same slot at the same moment. Bookings run in a locked database transaction and a unique index allows only one live booking per slot."}</p><div id="raceout"></div></div>
     </div>
   </div>`;
   const run = $("#run");
@@ -1241,14 +1749,14 @@ VIEWS.demo = async (el) => {
   const hidden = DEMO_STEPS.length - steps.length;
   el.innerHTML = html`
   <div class="page-head"><div class="grow"><h1>Judge demo</h1>
-    <p>${steps.length} steps, about three minutes. Every button runs the real thing against the real database - nothing on this page is staged.</p></div></div>
+    <p>${window.LEADDESK_PREVIEW_MODE ? `${steps.length} sample steps. Buttons simulate the experience with synthetic data; changes reset on refresh.` : `${steps.length} steps, about three minutes. Every button runs the real thing against the real database - nothing on this page is staged.`}</p></div></div>
   <div class="stack">
     ${steps.map((s, i) => html`<div class="card demo-step">
       <div class="demo-row">
         <div class="demo-num">${i + 1}</div>
         <div class="grow">
           <h2 class="demo-h">${s.icon} ${s.title}</h2>
-          <p class="small muted demo-why">${s.why}</p>
+          <p class="small muted demo-why">${window.LEADDESK_PREVIEW_MODE ? "Uses synthetic sample data. Actions are simulated in this browser session; nothing is sent or saved." : s.why}</p>
           <div class="row">
             <button class="btn primary" data-run="${s.id}">${s.cta}</button>
             ${s.go ? html`<a class="btn" href="#/${s.go}">Open the page →</a>` : ""}

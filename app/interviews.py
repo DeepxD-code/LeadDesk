@@ -4,13 +4,13 @@ import os
 import secrets
 import threading
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
+from pydantic import BaseModel, Field, field_validator
 
-from . import mailer
+from . import google_calendar, mailer
 from .auth import current_user, require
 from .db import TZ_NAME, ex, notify, now, now_s, q, q1, tx
 from .ics import build_ics
@@ -23,6 +23,7 @@ ORGANIZER = os.environ.get("ORGANIZER_EMAIL", "scheduler@leaddesk.local")
 LENGTHS = (30, 45, 60)
 CRITERIA = ["communication", "technical", "problem_solving", "culture_fit"]
 MIN_NOTICE_MIN = int(os.environ.get("BOOKING_MIN_NOTICE_MIN", "60"))
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # ------------------------------------------------------------------ helpers
 
@@ -105,6 +106,44 @@ def open_slots(length_min=None, exclude_interview_id=0, slot_id=None):
     return q(sql + " ORDER BY s.start, u.name", params)
 
 
+def _calendar_free_slots(slots):
+    by_interviewer = {}
+    for slot in slots:
+        by_interviewer.setdefault(slot["interviewer_id"], []).append(slot)
+    available = []
+    for interviewer_id, rows in by_interviewer.items():
+        try:
+            busy = google_calendar.busy_intervals(
+                interviewer_id,
+                min(row["start"] for row in rows),
+                max(row["end"] for row in rows),
+            )
+        except google_calendar.GoogleCalendarError as exc:
+            raise HTTPException(503, f"Could not check Google Calendar availability: {exc}") from exc
+        if busy is None:
+            available.extend(rows)
+            continue
+        for row in rows:
+            start = _dt(row["start"]).replace(tzinfo=IST)
+            end = _dt(row["end"]).replace(tzinfo=IST)
+            if not any(start < busy_end and end > busy_start for busy_start, busy_end in busy):
+                available.append(row)
+    return available
+
+
+def _check_calendar_slot(slot):
+    try:
+        busy = google_calendar.busy_intervals(slot["interviewer_id"], slot["start"], slot["end"])
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(503, f"Could not check Google Calendar availability: {exc}") from exc
+    if busy is None:
+        return
+    start = _dt(slot["start"]).replace(tzinfo=IST)
+    end = _dt(slot["end"]).replace(tzinfo=IST)
+    if any(start < busy_end and end > busy_start for busy_start, busy_end in busy):
+        raise HTTPException(409, "That time is busy on the interviewer's Google Calendar. Choose another slot.")
+
+
 # ------------------------------------------------------------------ interviewer: availability
 
 class SlotIn(BaseModel):
@@ -126,9 +165,55 @@ def my_slots(interviewer_id: int | None = None, user=Depends(current_user)):
                 FROM slots s WHERE s.interviewer_id=? AND s.status='open' AND s.end >= ? ORDER BY s.start""",
              (iid, now().isoformat(timespec="minutes")))
     blocked = {s["id"] for s in rows} - {s["id"] for s in open_slots()}
+    busy = None
+    if rows and iid == user["id"]:
+        try:
+            busy = google_calendar.busy_intervals(iid, min(s["start"] for s in rows), max(s["end"] for s in rows))
+        except google_calendar.GoogleCalendarError as exc:
+            raise HTTPException(503, f"Could not check Google Calendar availability: {exc}") from exc
     for s in rows:
-        s["state"] = "booked" if s["interview_id"] else ("blocked" if s["id"] in blocked else "open")
-    return {"slots": rows, "lengths": LENGTHS, "time_zone": TZ_NAME}
+        start = _dt(s["start"]).replace(tzinfo=IST)
+        end = _dt(s["end"]).replace(tzinfo=IST)
+        calendar_blocked = busy is not None and any(start < b_end and end > b_start for b_start, b_end in busy)
+        s["state"] = ("booked" if s["interview_id"] else
+                      "blocked" if s["id"] in blocked else
+                      "calendar_blocked" if calendar_blocked else "open")
+    return {"slots": rows, "lengths": LENGTHS, "time_zone": TZ_NAME,
+            "google_calendar": google_calendar.status(user["id"]) if user["role"] == "interviewer" else None}
+
+
+@router.get("/google/status")
+def google_status(user=Depends(require("interviewer"))):
+    return google_calendar.status(user["id"])
+
+
+@router.get("/google/connect")
+def google_connect(user=Depends(require("interviewer"))):
+    try:
+        url = google_calendar.authorization_url(user["id"])
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/google/callback")
+def google_callback(state: str = "", code: str | None = None, error: str | None = None,
+                    user=Depends(require("interviewer"))):
+    if error:
+        raise HTTPException(400, f"Google authorization was not completed: {error}")
+    try:
+        google_calendar.complete_authorization(user["id"], state, code or "")
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return RedirectResponse(f"{BASE_URL}/#/availability?google=connected", status_code=303)
+
+
+@router.post("/google/disconnect")
+def google_disconnect(user=Depends(require("interviewer"))):
+    try:
+        return google_calendar.disconnect(user["id"])
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @router.post("/slots")
@@ -213,6 +298,73 @@ def submit_feedback(iid: int, body: FeedbackIn, user=Depends(require("interviewe
           recommendation, comments, submitted_at) VALUES (?,?,?,?,?,?,?,?,?)""",
        (iid, user["id"], body.communication, body.technical, body.problem_solving, body.culture_fit,
         body.recommendation, body.comments.strip(), now_s()))
+    return {"ok": True}
+
+
+class InterviewNoteIn(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("body")
+    @classmethod
+    def require_note_text(cls, value):
+        if not value.strip():
+            raise ValueError("Note cannot be blank")
+        return value.strip()
+
+
+def _interview_for_notes(iid, user):
+    interview = q1("SELECT * FROM interviews WHERE id=?", (iid,))
+    if not interview:
+        raise HTTPException(404, "Interview not found")
+    if user["role"] == "hr":
+        return interview
+    if user["role"] == "interviewer" and interview["interviewer_id"] == user["id"]:
+        return interview
+    raise HTTPException(404, "Interview not found")
+
+
+@router.get("/interviews/{iid}/notes")
+def interview_notes(iid: int, user=Depends(current_user)):
+    _interview_for_notes(iid, user)
+    rows = q("""SELECT n.*, u.name AS author_name FROM interview_notes n
+                JOIN users u ON u.id=n.author_id WHERE n.interview_id=?
+                ORDER BY n.created_at DESC, n.id DESC""", (iid,))
+    for row in rows:
+        row["can_edit"] = row["author_id"] == user["id"]
+    return {"notes": rows}
+
+
+@router.post("/interviews/{iid}/notes", status_code=201)
+def add_interview_note(iid: int, body: InterviewNoteIn, user=Depends(current_user)):
+    _interview_for_notes(iid, user)
+    ts = now_s()
+    note_id = ex("""INSERT INTO interview_notes(interview_id, author_id, body, created_at, updated_at)
+                    VALUES (?,?,?,?,?)""", (iid, user["id"], body.body, ts, ts))
+    return {"note": {"id": note_id, "interview_id": iid, "author_id": user["id"], "author_name": user["name"],
+                     "body": body.body, "created_at": ts, "updated_at": ts, "can_edit": True}}
+
+
+@router.patch("/notes/{note_id}")
+def update_interview_note(note_id: int, body: InterviewNoteIn, user=Depends(current_user)):
+    note = q1("SELECT * FROM interview_notes WHERE id=?", (note_id,))
+    if not note:
+        raise HTTPException(404, "Note not found")
+    _interview_for_notes(note["interview_id"], user)
+    if note["author_id"] != user["id"]:
+        raise HTTPException(403, "Only the note author can edit it")
+    ex("UPDATE interview_notes SET body=?, updated_at=? WHERE id=?", (body.body, now_s(), note_id))
+    return {"ok": True}
+
+
+@router.delete("/notes/{note_id}")
+def delete_interview_note(note_id: int, user=Depends(current_user)):
+    note = q1("SELECT * FROM interview_notes WHERE id=?", (note_id,))
+    if not note:
+        raise HTTPException(404, "Note not found")
+    _interview_for_notes(note["interview_id"], user)
+    if note["author_id"] != user["id"]:
+        raise HTTPException(403, "Only the note author can delete it")
+    ex("DELETE FROM interview_notes WHERE id=?", (note_id,))
     return {"ok": True}
 
 
@@ -303,6 +455,8 @@ def board(recruiter_id: int | None = None, role: str | None = None, user=Depends
     for r in rows:
         r["board_status"] = board_status(r, fb)
         r["link"] = link_for(r["token"])
+        r["calendar_sync"] = q1(
+            "SELECT status, error, updated_at FROM interview_calendar_sync WHERE interview_id=?", (r["id"],))
         counts[r["board_status"]] += 1
     roles = [r["role_title"] for r in q("SELECT DISTINCT role_title FROM candidates ORDER BY role_title")]
     recruiters = q("SELECT id, name FROM users WHERE role IN ('hr','admin') AND id IN (SELECT recruiter_id FROM candidates)")
@@ -326,6 +480,21 @@ def nudge(iid: int, user=Depends(require("hr", "admin"))):
                 f"Please submit feedback for {iv['candidate_name']} ({_fmt(iv['start'])}).\n{BASE_URL}/#/interviews",
                 kind="feedback-reminder")
     return {"ok": True}
+
+
+@router.post("/interviews/{iid}/calendar-sync")
+def retry_calendar_sync(iid: int, user=Depends(current_user)):
+    iv = q1(IV_SELECT + " WHERE i.id=?", (iid,))
+    if not iv or iv["status"] not in ("scheduled", "cancelled"):
+        raise HTTPException(404, "Interview not found")
+    if user["role"] not in ("hr", "admin", "interviewer"):
+        raise HTTPException(403, "Not allowed")
+    if user["role"] == "interviewer" and iv["interviewer_id"] != user["id"]:
+        raise HTTPException(404, "Interview not found")
+    result = google_calendar.sync_interview(iv, cancelled=iv["status"] == "cancelled")
+    if result["status"] == "failed":
+        raise HTTPException(502, result["error"] or "Google Calendar synchronization failed.")
+    return result
 
 
 @router.get("/interviews/{iid}/ics")
@@ -394,6 +563,7 @@ def booking_page(token: str):
     slots = [] if iv["status"] == "cancelled" else open_slots(iv["length_min"], iv["id"])
     if iv["status"] == "scheduled":
         slots = [s for s in slots if s["id"] != iv["slot_id"]]
+    slots = _calendar_free_slots(slots)
     past = iv["status"] == "scheduled" and _dt(iv["start"]) <= now()
     return {"candidate": iv["candidate_name"], "role": iv["role_title"], "round": iv["round_name"],
             "status": iv["status"], "past": past,
@@ -411,6 +581,17 @@ class BookIn(BaseModel):
 
 @public.post("/{token}")
 def book(token: str, body: BookIn):
+    preview_iv = q1("SELECT * FROM interviews WHERE token=?", (token,))
+    if not preview_iv:
+        raise HTTPException(404, "This booking link is not valid")
+    if preview_iv["status"] == "cancelled":
+        raise HTTPException(400, "This interview was cancelled. Please contact the recruiter.")
+    if preview_iv["status"] == "scheduled" and _dt(preview_iv["start"]) <= now():
+        raise HTTPException(400, "This interview has already taken place")
+    candidate_slots = open_slots(preview_iv["length_min"], preview_iv["id"], slot_id=body.slot_id)
+    if not candidate_slots:
+        raise HTTPException(409, "Sorry, that time was just taken. Please choose another slot.")
+    _check_calendar_slot(candidate_slots[0])
     with tx():  # BEGIN IMMEDIATE: one booking at a time, the second sees the first's result
         iv = q1("SELECT * FROM interviews WHERE token=?", (token,))
         if not iv:
@@ -432,6 +613,7 @@ def book(token: str, body: BookIn):
            (s["id"], s["interviewer_id"], s["start"], s["end"], location, int(resched), int(resched), now_s(), iv["id"]))
     full = q1(IV_SELECT + " WHERE i.id=?", (iv["id"],))
     _send_invites(full, "rescheduled" if resched else "booked", old_interviewer_id=iv["interviewer_id"] if resched else None)
+    google_calendar.sync_interview(full)
     return {"ok": True, "rescheduled": resched, "label": _fmt(full["start"]), "interviewer": full["interviewer_name"],
             "location": full["location"]}
 
@@ -458,7 +640,9 @@ def _cancel(iid):
     was_booked = iv["status"] == "scheduled"
     ex("UPDATE interviews SET status='cancelled', ics_sequence=ics_sequence+1, updated_at=? WHERE id=?", (now_s(), iid))
     if was_booked:
-        _send_invites(q1(IV_SELECT + " WHERE i.id=?", (iid,)), "cancelled")
+        full = q1(IV_SELECT + " WHERE i.id=?", (iid,))
+        _send_invites(full, "cancelled")
+        google_calendar.sync_interview(full, cancelled=True)
     return {"ok": True}
 
 

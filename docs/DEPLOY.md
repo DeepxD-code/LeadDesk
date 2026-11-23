@@ -13,6 +13,16 @@ Redis, no queue, no external API. That is what makes deploy simple, and it is al
 the constraint: **run exactly one worker**, and back up `data/` and `secrets/` as a
 pair.
 
+## Public team preview
+
+The static preview at [leaddesk-preview.vercel.app](https://leaddesk-preview.vercel.app/)
+is for sharing the interface with teammates. It uses synthetic data and simulates
+actions in the browser; it has no backend, real sign-in, persistent storage, outbound
+email, or real file uploads. Refreshing resets the sample records.
+
+Use the Docker or persistent-host paths below for real work. The Vercel preview is not
+a production deployment of the LeadDesk application.
+
 ---
 
 ## Before anything: the one switch that matters
@@ -148,6 +158,34 @@ docker compose -f deploy/docker-compose.prod.yml up -d --build
 
 The database is migrated in place at startup; `data/` is untouched by the rebuild.
 
+## Google Calendar (optional)
+
+Each interviewer can connect their own primary calendar from **My availability**.
+LeadDesk checks free/busy periods before showing slots to candidates, then creates,
+updates, or cancels the interview event and sends the calendar invitation from Google.
+If Calendar is not connected, the existing email and `.ics` flow continues to work.
+Google Calendar errors are shown to HR with a retry action; a confirmed booking is not
+discarded when a calendar request fails.
+
+To configure the connector:
+
+1. In Google Cloud, enable the Google Calendar API and create an OAuth client for a
+   web application.
+2. Add the exact callback URL `https://<your-host>/api/iv/google/callback` to the
+   OAuth client's authorized redirect URIs. For local Docker, use
+   `http://localhost:8000/api/iv/google/callback`.
+   Use an internal consent screen for your Workspace organization when available;
+   otherwise add test users and follow Google's verification requirements.
+3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in the
+   server's `.env`, then restart the app. Do not commit the client secret.
+4. Each interviewer signs in and selects **Connect Google Calendar**. Google displays
+   the requested free/busy and owned-calendar event permissions before granting access.
+
+OAuth tokens are encrypted with the vault master key. Back up `data/` and `secrets/`
+together, and keep the key file outside Git. Disconnecting stops future synchronization;
+events already created remain on Google Calendar. Internal interview notes are visible
+only to HR and the assigned interviewer, and are not exposed to candidates.
+
 ### Firewall
 
 Only 80 and 443 should be reachable. The app container binds to `127.0.0.1:8000` in the
@@ -190,6 +228,9 @@ What such platforms need you to do:
 | `DEMO_MODE` | `1` | one-click sign-in and the demo password endpoint. **Set to 0 in public** |
 | `DEMO_PASSWORD` | `demo1234` | the password those buttons use |
 | `PUBLIC_BASE_URL` | `http://localhost:8000` | base of booking links in email; `https://` also enables Secure cookies |
+| `GOOGLE_CLIENT_ID` | unset | OAuth web client ID for optional Calendar sync |
+| `GOOGLE_CLIENT_SECRET` | unset | OAuth web client secret; keep it outside Git |
+| `GOOGLE_REDIRECT_URI` | `<PUBLIC_BASE_URL>/api/iv/google/callback` | exact OAuth callback registered with Google |
 | `OLLAMA_URL` | `http://localhost:11434` | local model endpoint |
 | `LLM_MODEL` | `qwen2.5:3b` | model name |
 | `LLM_TIMEOUT` | `120` | seconds before falling back to extractive mode |
