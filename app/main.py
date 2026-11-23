@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import crypto, forum, impact, interviews, llm, security, sop, tasks, vault
+from . import crypto, forum, impact, interviews, llm, leaves, security, sop, tasks, vault
 from .auth import COOKIE, current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
@@ -22,7 +22,7 @@ log = logging.getLogger("leaddesk")
 STATIC = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 
 app = FastAPI(title="LeadDesk", version="1.0")
-for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router, interviews.public):
+for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router, interviews.public, leaves.router):
     app.include_router(r)
 
 # Reply headers, login throttling and session expiry. Safe defaults; driven by env.

@@ -406,3 +406,35 @@ def test_feedback_is_hidden_until_you_submit_your_own(anon, seeded):
     assert body["locked"] is True
     assert body["feedback"] == [], "a colleague's feedback must not be visible yet"
     assert body["hidden"] >= 1
+
+
+# ---------------------------------------------------------------- leave
+
+def test_member_submits_leave_and_lists_it(member):
+    created = member.post("/api/leaves", json={"start_date": "2026-11-25", "end_date": "2026-11-26", "reason": "Personal time"})
+    assert created.status_code == 201, created.text
+    lid = created.json()["id"]
+
+    mine = member.get("/api/leaves").json()["leaves"]
+    assert any(l["id"] == lid for l in mine)
+    assert next(l for l in mine if l["id"] == lid)["status"] == "pending"
+
+
+def test_leave_rejects_bad_dates_and_reversed_ranges(member):
+    assert member.post("/api/leaves", json={"start_date": "2026-13-45", "end_date": "2026-11-46"}).status_code == 422
+    assert member.post("/api/leaves", json={"start_date": "2026-11-26", "end_date": "2026-11-25"}).status_code == 400
+
+
+def test_lead_decides_a_leave_request(lead, member):
+    created = member.post("/api/leaves", json={"start_date": "2026-12-01", "end_date": "2026-12-02", "reason": "Family event"})
+    lid = created.json()["id"]
+    decided = lead.post(f"/api/leaves/{lid}/decide", json={"status": "approved"})
+    assert decided.status_code == 200, decided.text
+    got = [l for l in lead.get("/api/leaves").json()["leaves"] if l["id"] == lid]
+    assert got and got[0]["status"] == "approved"
+
+
+def test_only_leads_can_decide_a_leave(member):
+    created = member.post("/api/leaves", json={"start_date": "2026-12-05", "end_date": "2026-12-06"})
+    lid = created.json()["id"]
+    assert member.post(f"/api/leaves/{lid}/decide", json={"status": "approved"}).status_code == 403

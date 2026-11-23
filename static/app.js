@@ -121,14 +121,14 @@ const FORUM_ONLY_ROLES = new Set(["tester", "developer"]);
 
 const NAV = {
   lead: [
-    { id: "work", label: "Work", items: [["overview", "Overview"], ["board", "Task board"], ["weekly-report", "Weekly report"]] },
+    { id: "work", label: "Work", items: [["overview", "Overview"], ["board", "Task board"], ["weekly-report", "Weekly report"], ["leave", "Leave"]] },
     { id: "knowledge", label: "Knowledge", items: [["assistant", "Ask the SOPs"], ["needs-lead", "Needs lead", "needs"], ["sops", "SOP library"]] },
     { id: "community", label: "Community", items: [["forum", "Team forum"]] },
     { id: "records", label: "Records", items: [["vault", "Documents"], ["proof", "System proof"]] },
     { id: "presentation", label: "Presentation", items: [["demo", "Demo walkthrough"]] },
   ],
   member: [
-    { id: "work", label: "Work", items: [["my-tasks", "My tasks"], ["assistant", "Ask the SOPs"], ["weekly-report", "Weekly report"]] },
+    { id: "work", label: "Work", items: [["my-tasks", "My tasks"], ["assistant", "Ask the SOPs"], ["weekly-report", "Weekly report"], ["leave", "Leave"]] },
     { id: "community", label: "Community", items: [["forum", "Team forum"]] },
     { id: "records", label: "Records", items: [["vault", "My documents"]] },
   ],
@@ -169,6 +169,7 @@ const NAV_ICONS = {
   "my-interviews": '<rect x="2.8" y="4" width="10.4" height="9" rx="1"/><path d="M5.5 2.5v3M10.5 2.5v3M2.8 7h10.4M5.3 9.5h2.2"/>',
   availability: '<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8v3.5l2.2 1.3"/>',
   "weekly-report": '<rect x="2.8" y="3" width="10.4" height="8" rx="1"/><path d="M5.5 3v3M10.5 3v3"/>',
+  leave: '<path d="M12 3a2 2 0 0 0-2 2v7a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zM5 3a2 2 0 0 1 2 2v7a2 2 0 0 1-4 0V5a2 2 0 0 1 2-2z"/>',
   audit: '<path d="M3.5 3h9M3.5 6.5h9M3.5 10h6M3.5 13h9"/>',
   bell: '<path d="M4.6 6.8a3.4 3.4 0 0 1 6.8 0c0 4 1.5 4.2 1.5 5.3H3.1c0-1.1 1.5-1.3 1.5-5.3z"/><path d="M6.5 13.2a1.5 1.5 0 0 0 3 0"/>',
 };
@@ -672,6 +673,64 @@ async function showForumThread(id, el) {
 }
 
 VIEWS.forum = drawForum;
+
+async function drawLeave(el) {
+  const r = await api("/api/leaves");
+  const canDecide = ["lead", "admin", "hr"].includes(S.me.role);
+  el.innerHTML = html`
+    <div class="page-head">
+      <div class="grow"><h1>Leave</h1><p>Time away from the shift.</p></div>
+      ${canDecide ? html`<button class="btn primary" id="leave-new">Request leave</button>` : ""}
+    </div>
+    <section class="panel">
+      <header class="panel-head"><div><h2>Leave requests</h2><p>Submitted leave with its decision</p></div></header>
+      <div class="panel-body">
+        ${r.leaves.length ? html`<div>${r.leaves.map((l) => html`
+          <div class="card" style="padding:14px">
+            <div class="row">
+              <span class="grow"><b>${l.user_name}</b> <span class="muted small">${l.user_role}</span></span>
+              <span class="pill ${l.status === "approved" ? "ok" : l.status === "rejected" ? "bad" : "warn"}">${l.status}</span>
+              ${canDecide && l.status === "pending" ? html`
+                <button class="btn sm" data-leave-decide="${l.id}" data-decide="approved">Approve</button>
+                <button class="btn sm" data-leave-decide="${l.id}" data-decide="rejected">Reject</button>
+              ` : ""}
+            </div>
+            <div class="muted small">${l.start_date} → ${l.end_date}</div>
+            ${l.reason ? html`<div class="small">${l.reason}</div>` : ""}
+          </div>`)}` : html`<div class="empty-state">No leave requests yet</div>`}
+      </div>
+    </section>
+    ${canDecide ? html`
+      <section class="panel">
+        <header class="panel-head"><div><h2>Request leave</h2><p>For a team member</p></div></header>
+        <form class="panel-body" id="leave-form">
+          <div class="row">
+            <label class="grow"><span class="small">From</span><input type="date" name="start_date" required /></label>
+            <label class="grow"><span class="small">To</span><input type="date" name="end_date" required /></label>
+          </div>
+          <label class="block"><span class="small">Reason</span><input name="reason" maxlength="1000" /></label>
+          <button class="btn primary" type="submit">Submit leave</button>
+        </form>
+      </section>` : ""}
+  `;
+  if (canDecide) {
+    $$("[data-leave-decide]", el).forEach((b) => (b.onclick = async () => {
+      await api(`/api/leaves/${b.dataset.leave}/decide`, { method: "POST", body: { status: b.dataset.decide } });
+      await drawLeave(el);
+    }));
+  }
+  const form = $("#leave-form", el);
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      await api("/api/leaves", { method: "POST", body: { start_date: String(fd.get("start_date") || ""), end_date: String(fd.get("end_date") || ""), reason: String(fd.get("reason") || "") } });
+      await drawLeave(el);
+    };
+  }
+};
+
+VIEWS["leave"] = drawLeave;
 
 // ------------------------------------------------------------------ weekly report (impact numbers)
 VIEWS["weekly-report"] = async (el) => {

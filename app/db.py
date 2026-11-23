@@ -104,6 +104,16 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- ---------- Task board ----------
+CREATE TABLE IF NOT EXISTS leaves (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | rejected
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
