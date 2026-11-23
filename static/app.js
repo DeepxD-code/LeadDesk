@@ -515,6 +515,8 @@ function accountDialog() {
       <div><dt>Role</dt><dd>${me.role_label}</dd></div>
       ${me.department ? html`<div><dt>Department</dt><dd>${me.department}</dd></div>` : ""}
       ${me.shift ? html`<div><dt>Shift</dt><dd>${me.shift}</dd></div>` : ""}
+      ${me.employee_id ? html`<div><dt>Employee</dt><dd>${me.employee_id}</dd></div>` : ""}
+      ${me.email ? html`<div><dt>Email</dt><dd>${me.email}</dd></div>` : ""}
     </dl>
     <div class="row"><button class="btn" type="button" id="account-password">Change password</button></div>`);
   $("#account-password").onclick = changePasswordDialog;
