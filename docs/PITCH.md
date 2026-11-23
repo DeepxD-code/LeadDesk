@@ -127,7 +127,7 @@ Switch person to **Anil Rao (Admin)** using the selector, then **Judge demo**:
 | Answer quality | 5/5 answerable with source, 3/3 refusals, 2/2 Hindi and Gujarati | `scripts/eval_sop.py` |
 | Vault | 10 documents, 4 OCR scans, entropy 7.998 bits/byte | `/api/proof` |
 | Booking | 2 concurrent requests, 1 booking | `/api/iv/demo/race` |
-| Tests | 36 passing | `pytest` |
+| Tests | 45 passing | `pytest` |
 
 If someone asks where a number comes from, open **How we know it works**. Every figure
 on screen is computed on request.

@@ -89,7 +89,7 @@ start discussions and reply in the **Team forum**. Tester and developer accounts
 
 These are shared demo credentials, not production user accounts. Before the app is reachable from anywhere but your
 own machine, set `DEMO_MODE=0` (that removes the one-click sign-in and the password endpoint) and give every account a
-real password — **Password** in the top bar, or:
+real password — **Change password** in the account menu (rail footer), or:
 
 ```bash
 docker compose exec app python scripts/reset_password.py admin 'a-long-new-password'
@@ -111,6 +111,8 @@ The app prints a warning at startup if `DEMO_MODE=1` and the public URL is not l
 | **My tasks** | A member's own queue, with the buttons they actually use. |
 | **Vault** | Encrypted HR documents, role-limited, scanned files searchable by content, every action in an audit log. |
 | **Interviews** | Interviewers publish availability, candidates book from a link, feedback is independent and structured. |
+| **Weekly report** | The impact numbers on screen, recomputed from the database on every load. |
+| **Leave** | A member submits time away from the shift; a lead approves or rejects it. |
 | **How we know it works** | The measured numbers: eval scores, audit chain check, scan count. |
 
 ## Two things worth clicking
@@ -206,7 +208,7 @@ together, firewall, troubleshooting, and the demo-day checklist.
 ## Tests
 
 ```bash
-python -m pytest tests -q      # 36 tests, ~14 s
+python -m pytest tests -q      # 45 tests, ~16 s
 ```
 
 They cover login and role gates, the multilingual path, the retrieval tie-break, the answer gate, the booking race, the
