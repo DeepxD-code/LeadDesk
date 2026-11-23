@@ -1,5 +1,8 @@
 """Smoke tests: the app boots, roles are enforced, booking works, and the two
 guards this project claims actually hold (double booking, vault encryption)."""
+from fastapi.testclient import TestClient
+
+from app.main import app
 
 
 def test_health(anon):
@@ -157,6 +160,78 @@ def test_admin_can_run_the_eval_in_app(lead):
     assert body["answerable_total"] >= 5
     assert body["answerable_passed"] >= 4, "the brief asks for at least 4 of 5 with a source"
     assert body["gaps_caught"] == body["gaps_total"]
+
+
+# ---------------------------------------------------------------- deployment hardening
+
+def test_security_headers_are_on_every_response(anon):
+    r = anon.get("/api/health")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["x-frame-options"] == "DENY"
+    assert r.headers["referrer-policy"] == "no-referrer"
+    csp = r.headers["content-security-policy"]
+    assert "default-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+
+
+def test_app_csp_does_not_allow_inline_script(anon):
+    """The SPA loads its code from files, so inline script stays forbidden."""
+    csp = anon.get("/").headers["content-security-policy"]
+    script_src = csp.split("script-src")[1].split(";")[0]
+    assert "unsafe-inline" not in script_src
+
+
+def test_booking_page_allows_its_own_inline_script(anon):
+    """The public booking page is one self-contained file; the policy must not break it."""
+    csp = anon.get("/book/anything").headers["content-security-policy"]
+    script_src = csp.split("script-src")[1].split(";")[0]
+    assert "unsafe-inline" in script_src
+
+
+def test_login_is_throttled_after_repeated_failures(anon):
+    """A password guess should stop being free. Uses a name that does not exist, so
+    the counter cannot interfere with any real account in this suite."""
+    codes = []
+    for _ in range(6):
+        codes.append(anon.post("/api/auth/login", json={"username": "no-such-user", "password": "x"}).status_code)
+    assert codes[:5] == [401] * 5
+    assert codes[5] == 429
+
+
+def test_stale_session_is_rejected(seeded):
+    """The cookie may still be in the browser; the server must refuse it anyway."""
+    from datetime import timedelta
+
+    from app.db import ex, now
+
+    c = TestClient(app)
+    r = c.post("/api/auth/login", json={"username": "m02", "password": "demo1234"})
+    token = r.json()["token"]
+    ex("UPDATE sessions SET created_at=? WHERE token=?",
+       ((now() - timedelta(hours=48)).isoformat(timespec="seconds"), token))
+    r2 = c.get("/api/auth/me", headers={"X-Session": token})
+    assert r2.status_code == 401
+    assert "expired" in r2.json()["detail"].lower()
+
+
+def test_password_change_rejects_the_demo_password(seeded):
+    c = TestClient(app)
+    assert c.post("/api/auth/login", json={"username": "m03", "password": "demo1234"}).status_code == 200
+    assert c.post("/api/auth/password", json={"current": "demo1234", "new": "demo1234"}).status_code == 422
+    assert c.post("/api/auth/password", json={"current": "wrong", "new": "a-good-password"}).status_code == 401
+
+
+def test_password_change_works_and_keeps_this_session(seeded):
+    c = TestClient(app)
+    assert c.post("/api/auth/login", json={"username": "m04", "password": "demo1234"}).status_code == 200
+    changed = c.post("/api/auth/password", json={"current": "demo1234", "new": "better-password-1"})
+    assert changed.status_code == 200, changed.text
+    # this session still works
+    assert c.get("/api/auth/me").status_code == 200
+    # the new password is the one that works now
+    fresh = TestClient(app)
+    assert fresh.post("/api/auth/login", json={"username": "m04", "password": "demo1234"}).status_code == 401
+    assert fresh.post("/api/auth/login", json={"username": "m04", "password": "better-password-1"}).status_code == 200
 
 
 # ---------------------------------------------------------------- vault

@@ -1,0 +1,55 @@
+# Production compose: app behind Caddy, no Mailpit, app not exposed directly.
+#
+#   docker compose -f deploy/docker-compose.prod.yml up -d --build
+#
+# Requires a .env next to the repository root with at least DOMAIN and
+# PUBLIC_BASE_URL, and DEMO_MODE=0. See docs/DEPLOY.md.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: leaddesk-app
+    restart: unless-stopped
+    # Only Caddy can reach the app. Nothing on the internet talks to 8000 directly.
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      MAIL_FROM: ${MAIL_FROM:-LeadDesk <scheduler@localhost>}
+      SEED_DEMO: ${SEED_DEMO:-1}
+      DEMO_MODE: ${DEMO_MODE:-0}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      DATA_DIR: /app/data
+      VAULT_MASTER_KEY_FILE: /app/secrets/vault_master.key
+      VAULT_AUTOCREATE_KEY: "1"
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+    volumes:
+      - ../data:/app/data
+      - ../secrets:/app/secrets
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: leaddesk-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -159,6 +159,31 @@ async function renderLogin() {
   if (tour) tour.onclick = () => { tour.disabled = true; $("#tourhint").textContent = "Signing in…"; go("lead", password, "#/demo"); };
 }
 
+function changePasswordDialog() {
+  const ov = modal(html`<h2>Change your password</h2>
+    <p class="muted small">Every other signed-in device is signed out when you save.</p>
+    <form id="pwform" class="stack">
+      <label class="f">Current password <input class="input" type="password" name="current" autocomplete="current-password" required></label>
+      <label class="f">New password <input class="input" type="password" name="new" autocomplete="new-password" minlength="8" required></label>
+      <label class="f">Repeat new password <input class="input" type="password" name="again" autocomplete="new-password" minlength="8" required></label>
+      <div class="row"><button class="btn primary" type="submit">Save password</button>
+        <button class="btn" type="button" data-close>Cancel</button></div>
+    </form>`);
+  ov.querySelector("#pwform").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    if (f.get("new") !== f.get("again")) return fail(new Error("The two new passwords do not match."));
+    const b = e.target.querySelector("button[type=submit]");
+    b.disabled = true;
+    try {
+      await api("/api/auth/password", { method: "POST", body: { current: f.get("current"), new: f.get("new") } });
+      closeModal();
+      toast("Password changed. Other devices were signed out.", "ok");
+    } catch (err) { fail(err); }
+    b.disabled = false;
+  };
+}
+
 // ------------------------------------------------------------------ shell
 async function boot() {
   if (!S.me) {
@@ -205,12 +230,15 @@ function renderShell() {
             <div class="pop hidden" id="pop"></div>
           </div>
           <select class="input" id="switch" title="Demo: switch person"></select>`}
+        <button class="btn sm" id="pwbtn" title="Change your password">Password</button>
         <button class="btn sm" id="logout">Sign out</button>
       </div>
       <div class="content" id="view"></div>
     </main>
   </div>`;
   $("#logout").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); S.me = null; location.hash = ""; renderLogin(); };
+  const pwbtn = $("#pwbtn");
+  if (pwbtn) pwbtn.onclick = () => changePasswordDialog();
   const bell = $("#bell");
   if (bell) bell.onclick = toggleNotes;
   document.addEventListener("mousedown", (e) => { if (!e.target.closest("#pop") && !e.target.closest("#bell")) $("#pop")?.classList.add("hidden"); });

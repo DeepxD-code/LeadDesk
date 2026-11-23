@@ -7,11 +7,13 @@ Pipeline
            -> answer + sources, or "not in the SOPs" -> the question lands in the Needs-lead list.
 If the local model is offline the assistant still works in extractive mode (quotes the best section).
 """
+import asyncio
 import json
 import os
 import re
 import threading
 import uuid
+from pathlib import Path
 
 import numpy as np
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -438,11 +440,13 @@ async def upload_doc(file: UploadFile = File(...), user=Depends(require("lead", 
         raise HTTPException(400, "Please upload a PDF or Word (.docx) file")
     os.makedirs(SOP_DIR, exist_ok=True)
     path = os.path.join(SOP_DIR, f"{uuid.uuid4().hex}_{name}")
-    data = await file.read()
-    if len(data) > 25 * 1024 * 1024:
+    # Read with a cap so a 4 GB upload is rejected instead of being loaded into memory.
+    limit = 25 * 1024 * 1024
+    data = await file.read(limit + 1)
+    if len(data) > limit:
         raise HTTPException(400, "File is larger than 25 MB")
-    with open(path, "wb") as f:
-        f.write(data)
+    # Writing a file is blocking work; keep it off the event loop.
+    await asyncio.to_thread(Path(path).write_bytes, data)
     try:
         doc_id, title, n = ingest_file(path, name, user["id"])
     except HTTPException:

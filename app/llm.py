@@ -24,7 +24,7 @@ def status(force=False) -> dict:
             val["online"] = True
         else:
             val["detail"] = f"Ollama is running but model '{LLM_MODEL}' is not pulled yet"
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         val["detail"] = f"Ollama not reachable at {OLLAMA_URL}"
     _status_cache.update(at=time.time(), value=val)
     return val

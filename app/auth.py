@@ -3,11 +3,13 @@ import hashlib
 import hmac
 import os
 import secrets
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from .db import ex, now_s, q, q1
+from . import security
+from .db import ex, now, now_s, q, q1, tx
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 COOKIE = "leaddesk_session"
@@ -51,7 +53,16 @@ def current_user(request: Request) -> dict:
     u = q1("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND u.active=1", (token,))
     if not u:
         raise HTTPException(401, "Please sign in")
+    row = q1("SELECT created_at FROM sessions WHERE token=?", (token,))
+    if row and row["created_at"] < _session_cutoff():
+        ex("DELETE FROM sessions WHERE token=?", (token,))
+        raise HTTPException(401, "Your session has expired. Please sign in again.")
     return u
+
+
+def _session_cutoff() -> str:
+    """Server-side expiry, so a stolen cookie cannot outlive the shift."""
+    return (now() - timedelta(hours=security.SESSION_HOURS)).isoformat(timespec="seconds")
 
 
 def require(*roles):
@@ -68,13 +79,22 @@ class LoginIn(BaseModel):
 
 
 @router.post("/login")
-def login(body: LoginIn, response: Response):
+def login(body: LoginIn, response: Response, request: Request):
+    key = security.client_key(body.username, request)
+    wait = security.login_wait(key)
+    if wait:
+        raise HTTPException(429, f"Too many failed attempts. Try again in {wait} seconds.")
     u = q1("SELECT * FROM users WHERE username=? AND active=1", (body.username.strip().lower(),))
     if not u or not verify_password(body.password, u["password_hash"]):
-        raise HTTPException(401, "Wrong username or password")
+        security.note_failure(key)
+        left = security.attempts_left(key)
+        hint = f" {left} attempt(s) left." if 0 < left <= 2 else ""
+        raise HTTPException(401, "Wrong username or password." + hint)
+    security.note_success(key)
     token = secrets.token_urlsafe(32)
     ex("INSERT INTO sessions(token, user_id, created_at) VALUES (?,?,?)", (token, u["id"], now_s()))
-    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+    response.set_cookie(COOKIE, token, httponly=True, samesite="lax", secure=security.secure_cookie(),
+                        max_age=int(security.SESSION_HOURS * 3600))
     return {"user": public_user(u), "token": token}
 
 
@@ -90,6 +110,43 @@ def logout(request: Request, response: Response):
 @router.get("/me")
 def me(user=Depends(current_user)):
     return {"user": public_user(user)}
+
+
+class PasswordIn(BaseModel):
+    current: str
+    new: str
+
+
+MIN_PASSWORD = int(os.environ.get("MIN_PASSWORD_LENGTH", "8"))
+
+
+def check_password_strength(pw: str) -> str | None:
+    """Returns a reason the password is refused, or None if it is acceptable."""
+    if len(pw) < MIN_PASSWORD:
+        return f"Use at least {MIN_PASSWORD} characters."
+    if pw.lower() in ("demo1234", "password", "leaddesk", "admin123", "12345678"):
+        return "That password is too easy to guess."
+    if pw.lower() == "demo1234":
+        return "That is the demo password. Choose a new one."
+    return None
+
+
+@router.post("/password")
+def change_password(body: PasswordIn, request: Request, user=Depends(current_user)):
+    """Change your own password. Every other session is signed out, so a password
+    change actually ends access that was granted with the old one."""
+    if not verify_password(body.current, user["password_hash"]):
+        raise HTTPException(401, "Your current password is not correct.")
+    problem = check_password_strength(body.new)
+    if problem:
+        raise HTTPException(422, problem)
+    new_hash = hash_password(body.new)
+    keep = request.cookies.get(COOKIE) or request.headers.get("X-Session")
+    with tx():
+        ex("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user["id"]))
+        ex("DELETE FROM sessions WHERE user_id=? AND token<>?", (user["id"], keep or ""))
+    return {"ok": True, "sessions_closed": q1(
+        "SELECT COUNT(*) AS n FROM sessions WHERE user_id=?", (user["id"],))["n"]}
 
 
 @router.get("/demo-users")

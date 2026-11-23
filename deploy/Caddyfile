@@ -1,0 +1,21 @@
+# Caddy in front of LeadDesk.
+#
+# Caddy obtains and renews the TLS certificate for $DOMAIN automatically; there is
+# no certbot step. The app itself listens on the compose network only.
+
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	# The app already sets CSP, X-Frame-Options, nosniff and HSTS. Do not duplicate
+	# them here: two copies of a header is how policies drift apart.
+	reverse_proxy app:8000
+
+	header {
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

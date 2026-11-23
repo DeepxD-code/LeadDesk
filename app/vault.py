@@ -10,13 +10,13 @@ import threading
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from . import crypto
 from .auth import current_user, require
-from .db import DATA_DIR, ex, get_conn, now, now_s, q, q1, tx
+from .db import DATA_DIR, ex, now, now_s, q, q1, tx
 from .ocr import extract_text
 
 router = APIRouter(prefix="/api/vault", tags=["vault"])

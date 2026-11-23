@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import crypto, forum, impact, interviews, llm, sop, tasks, vault
+from . import crypto, forum, impact, interviews, llm, security, sop, tasks, vault
 from .auth import COOKIE, current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
@@ -24,6 +24,9 @@ STATIC = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 app = FastAPI(title="LeadDesk", version="1.0")
 for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router, interviews.public):
     app.include_router(r)
+
+# Reply headers, login throttling and session expiry. Safe defaults; driven by env.
+security.install(app)
 
 
 @app.middleware("http")
@@ -66,6 +69,23 @@ async def startup():
     vault.load_text_index()
     asyncio.create_task(_scheduler_loop())
     log.info("LeadDesk ready. Time zone: %s. AI: %s", TZ_NAME, llm.status(force=True))
+    _warn_if_public_demo()
+
+
+def _warn_if_public_demo():
+    """A demo build signs anyone in as the administrator. That is fine on a laptop
+    and unacceptable on a public URL, so say so once, loudly, at startup."""
+    demo = os.environ.get("DEMO_MODE", "1") == "1"
+    base = os.environ.get("PUBLIC_BASE_URL", "")
+    public = base.startswith(("http://", "https://")) and "localhost" not in base and "127.0.0.1" not in base
+    if demo and public:
+        log.warning(
+            "DEMO_MODE is on and PUBLIC_BASE_URL is %s: the login page lists demo accounts and "
+            "their password, including the administrator. Set DEMO_MODE=0 before exposing this URL.",
+            base,
+        )
+    elif demo:
+        log.info("DEMO_MODE is on: one-click demo sign-in is available (local demo build).")
 
 
 @app.get("/api/health")

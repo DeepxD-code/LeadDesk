@@ -12,10 +12,11 @@ services:
       # The AI endpoint: Ollama runs on the host, so the container reaches it here.
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
-      SMTP_HOST: mailpit
-      SMTP_PORT: "1025"
-      SEED_DEMO: "1"
-      DEMO_MODE: "1"
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SEED_DEMO: ${SEED_DEMO:-1}
+      DEMO_MODE: ${DEMO_MODE:-1}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       DATA_DIR: /app/data
       VAULT_MASTER_KEY_FILE: /app/secrets/vault_master.key
       VAULT_AUTOCREATE_KEY: "1"

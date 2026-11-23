@@ -8,7 +8,7 @@ import shutil
 from datetime import datetime, timedelta
 
 from .auth import hash_password
-from .db import DATA_DIR, ex, now, q, q1, tx
+from .db import ex, now, q, q1, tx
 
 log = logging.getLogger("leaddesk.seed")
 ROOT = os.path.dirname(os.path.dirname(__file__))
