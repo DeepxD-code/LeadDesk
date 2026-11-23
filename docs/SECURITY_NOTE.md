@@ -98,19 +98,37 @@ Worth stating directly:
 
 ## What production would need
 
-In rough priority order:
+In rough priority order. Updated after the security pass of 24 November 2026 — the in-app items are marked **done**; the
+unmarked ones are genuinely open and are infrastructure problems, not code problems.
 
-1. **TLS** with HSTS, and secure, `httponly`, `samesite=strict` cookies.
+1. **TLS** with HSTS, and secure, `httponly`, `samesite=strict` cookies. — **Done in-app** where it can be: HSTS is emitted only
+   over https and the session cookie gets `Secure` when the base URL is https or `COOKIE_SECURE=1`. TLS termination lives at
+   the edge (Caddy in `deploy/docker-compose.prod.yml`). `samesite=strict` is deliberately deferred because the Google
+   Calendar OAuth callback is cross-site.
 2. **A real key service** — AWS KMS, GCP KMS or HashiCorp Vault — so the master key never sits on the application host,
-   plus a documented rotation procedure and re-encryption job.
+   plus a documented rotation procedure and re-encryption job. — **Open**.
 3. **Ship the audit log off-box** to append-only storage (S3 Object Lock, an immutable log service) so a host compromise
-   cannot rewrite history. Keep the hash chain as tamper evidence in transit.
-4. **Server-side session expiry** and idle timeout, refresh-on-activity, and re-authentication for download and delete.
-5. **Rate limiting and lockout** on login, and audit-driven alerting on repeated denials.
-6. **Two-person approval for deletion**, which is already modelled (`vault_delete_requests`) and enforced server-side:
-   the approver must differ from the requester, with a second approver required for the decision.
-7. **Antivirus scanning** (ClamAV) on upload, and content-type validation by magic bytes rather than file extension.
-8. **Field-level encryption or a separate metadata store** if filenames and employee IDs are themselves sensitive.
+   cannot rewrite history. Keep the hash chain as tamper evidence in transit. — **Open**.
+4. **Server-side session expiry** — **done** (`SESSION_HOURS`, default 12). Idle timeout, refresh-on-activity, and
+   re-authentication for downloads and deletes — deletes already go through two-person approval; **re-auth for downloads is
+   still open**.
+5. **Rate limiting and lockout** on login — **done** (`LOGIN_MAX_FAILURES` / `LOGIN_LOCK_SECONDS`). Audit-driven alerting on
+   repeated denials — **open**.
+6. **Two-person approval for deletion**, which is already modelled (`vault_delete_requests`) and enforced server-side: the
+   approver must differ from the requester, with a second approver required for the decision. — **Done**.
+7. **Antivirus scanning** (ClamAV) on upload, and content-type validation by magic bytes rather than file extension. —
+   **Magic bytes validation is done** in-app; ClamAV itself is **open**.
+8. **Field-level encryption or a separate metadata store** if filenames and employee IDs are themselves sensitive. — **Open**.
+
+## Remaining production gaps (short list)
+
+- KMS-backed master key with documented rotation.
+- Audit log shipping to append-only off-box storage.
+- Re-authentication for vault downloads.
+- ClamAV malware scanning on upload.
+- Field-level / metadata encryption.
+- Backups encrypted beyond the app-level ciphertext (keep `data/` and `secrets/` apart).
+
 
 ## Already implemented beyond the minimum
 
