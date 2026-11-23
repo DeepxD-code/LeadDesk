@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import crypto
+from . import auth, crypto
 from .auth import current_user, require
 from .db import DATA_DIR, ex, now, now_s, q, q1, tx
 from .ocr import extract_text
@@ -288,6 +288,9 @@ def doc_meta(doc_id: int, user=Depends(current_user)):
 def doc_file(doc_id: int, download: bool = False, user=Depends(current_user)):
     action = "download" if download else "view"
     doc = _get_doc_checked(doc_id, user, action)
+    if download and not auth.is_reauthenticated(user):
+        audit(user, "download", doc_id, "denied: re-authentication required", outcome="denied")
+        raise HTTPException(403, "Re-authentication required. Please confirm your password to download this document.")
     data = read_plain(doc)
     if download:
         data = watermark(data, doc, user)

@@ -46,11 +46,17 @@ def public_user(u: dict) -> dict:
     }
 
 
+REAUTH_MINUTES = 15
+
+
 def current_user(request: Request) -> dict:
     token = request.cookies.get(COOKIE) or request.headers.get("X-Session")
     if not token:
         raise HTTPException(401, "Please sign in")
-    u = q1("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND u.active=1", (token,))
+    u = q1(
+        "SELECT u.*, s.token AS session_token, s.reauthed_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND u.active=1",
+        (token,),
+    )
     if not u:
         raise HTTPException(401, "Please sign in")
     row = q1("SELECT created_at FROM sessions WHERE token=?", (token,))
@@ -58,6 +64,40 @@ def current_user(request: Request) -> dict:
         ex("DELETE FROM sessions WHERE token=?", (token,))
         raise HTTPException(401, "Your session has expired. Please sign in again.")
     return u
+
+
+class ReauthIn(BaseModel):
+    password: str
+
+
+@router.post("/reauth")
+def reauth(body: ReauthIn, request: Request, user=Depends(current_user)):
+    """Re-authenticate the current user with their password for sensitive actions."""
+    key = security.client_key(user["username"], request)
+    wait = security.login_wait(key)
+    if wait:
+        raise HTTPException(429, f"Too many failed attempts. Try again in {wait} seconds.")
+    if not verify_password(body.password, user["password_hash"]):
+        security.note_failure(key)
+        raise HTTPException(401, "Incorrect password.")
+    security.note_success(key)
+    token = user.get("session_token")
+    reauthed_now = now_s()
+    if token:
+        ex("UPDATE sessions SET reauthed_at=? WHERE token=?", (reauthed_now, token))
+    return {"ok": True, "reauthed_at": reauthed_now}
+
+
+def is_reauthenticated(user: dict, within_minutes: int = REAUTH_MINUTES) -> bool:
+    reauthed_at = user.get("reauthed_at")
+    if not reauthed_at:
+        return False
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(reauthed_at)
+        return (now() - dt).total_seconds() < within_minutes * 60
+    except Exception:
+        return False
 
 
 def _session_cutoff() -> str:

@@ -1,14 +1,17 @@
 """Task board, workload view, notifications and workload report export."""
 import csv
 import io
+import os
+import uuid
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .auth import current_user, require
-from .db import ex, get_setting, notify, now, now_s, q, q1, set_setting, tx
+from .db import DATA_DIR, ex, get_setting, notify, now, now_s, q, q1, set_setting, tx
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -170,6 +173,86 @@ def task_history(task_id: int, user=Depends(current_user)):
             e["from_value"] = STATUS_LABELS.get(e["from_value"], e["from_value"])
             e["to_value"] = STATUS_LABELS.get(e["to_value"], e["to_value"])
     return {"events": ev}
+
+
+TASK_FILES_DIR = os.path.join(DATA_DIR, "task_files")
+ALLOWED_TASK_FILE_EXTS = {".pdf": "application/pdf", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".zip": "application/zip"}
+
+
+def _task_or_404(task_id: int):
+    t = q1("SELECT * FROM tasks WHERE id=?", (task_id,))
+    if not t:
+        raise HTTPException(404, "Task not found")
+    return t
+
+
+def _can_view_task(task: dict, user: dict) -> bool:
+    return user["role"] in ("lead", "admin") or (user["role"] == "member" and task["assignee_id"] == user["id"])
+
+
+@router.get("/tasks/{task_id}/attachments")
+def list_task_attachments(task_id: int, user=Depends(current_user)):
+    t = _task_or_404(task_id)
+    if not _can_view_task(t, user):
+        raise HTTPException(403, "You cannot view this task")
+    rows = q("""SELECT a.id, a.task_id, a.filename, a.mime, a.size, a.uploaded_by, a.uploaded_at, a.purpose,
+                       u.name AS uploaded_by_name
+                FROM task_attachments a LEFT JOIN users u ON u.id=a.uploaded_by
+                WHERE a.task_id=? ORDER BY a.id""", (task_id,))
+    return {"attachments": rows}
+
+
+@router.post("/tasks/{task_id}/attachments")
+async def upload_task_attachment(task_id: int, purpose: str = Form("evidence"),
+                                 file: UploadFile = File(...), user=Depends(current_user)):
+    t = _task_or_404(task_id)
+    if not _can_view_task(t, user):
+        raise HTTPException(403, "You cannot upload to this task")
+    purpose = (purpose or "evidence").strip().lower()
+    if purpose not in ("guide", "evidence"):
+        raise HTTPException(400, "Purpose must be guide or evidence")
+    if purpose == "guide" and user["role"] not in ("lead", "admin"):
+        raise HTTPException(403, "Only leads can upload task guides")
+    name = os.path.basename(file.filename or "file")
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in ALLOWED_TASK_FILE_EXTS:
+        raise HTTPException(400, "Only PDF, DOCX, and ZIP files are allowed")
+    limit = 15 * 1024 * 1024
+    data = await file.read(limit + 1)
+    if not data or len(data) > limit:
+        raise HTTPException(400, "File is empty or larger than 15 MB")
+    from .security import check_magic
+    check_magic(data, name)
+    os.makedirs(TASK_FILES_DIR, exist_ok=True)
+    stored = f"{task_id}_{uuid.uuid4().hex}_{name}"
+    path = os.path.join(TASK_FILES_DIR, stored)
+    await __import__("asyncio").to_thread(Path(path).write_bytes, data)
+    aid = ex("""INSERT INTO task_attachments(task_id, filename, stored_path, mime, size, uploaded_by, uploaded_at, purpose)
+                VALUES (?,?,?,?,?,?,?,?)""",
+             (task_id, name, stored, ALLOWED_TASK_FILE_EXTS[ext], len(data), user["id"], now_s(), purpose))
+    label = "guide" if purpose == "guide" else "evidence"
+    _event(task_id, user["id"], "note", None, None, f"Uploaded {label}: {name}")
+    if purpose == "evidence":
+        for lead in q("SELECT id FROM users WHERE role='lead' AND active=1"):
+            if lead["id"] != user["id"]:
+                notify(lead["id"], f"{user['name']} uploaded evidence for: {t['title']}", f"#/board?task={task_id}")
+    return {"attachment": q1("""SELECT a.id, a.task_id, a.filename, a.mime, a.size, a.uploaded_by, a.uploaded_at, a.purpose,
+                                       u.name AS uploaded_by_name
+                                FROM task_attachments a LEFT JOIN users u ON u.id=a.uploaded_by WHERE a.id=?""", (aid,))}
+
+
+@router.get("/tasks/{task_id}/attachments/{att_id}")
+def download_task_attachment(task_id: int, att_id: int, user=Depends(current_user)):
+    t = _task_or_404(task_id)
+    if not _can_view_task(t, user):
+        raise HTTPException(403, "You cannot view this task")
+    a = q1("SELECT * FROM task_attachments WHERE id=? AND task_id=?", (att_id, task_id))
+    if not a:
+        raise HTTPException(404, "Attachment not found")
+    path = os.path.join(TASK_FILES_DIR, a["stored_path"])
+    if not os.path.exists(path):
+        raise HTTPException(404, "File missing on disk")
+    return FileResponse(path, filename=a["filename"], media_type=a["mime"])
 
 
 # ---------------- workload ----------------

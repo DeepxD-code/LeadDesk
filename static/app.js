@@ -84,6 +84,29 @@ function reasonModal({ title, description, label, submitLabel, required = true, 
   };
 }
 
+function reauthModal({ title = "Confirm password", description = "Re-authentication is required to download sensitive vault documents.", onSuccess, onCancel }) {
+  let submitted = false;
+  const ov = modal(html`
+    <div class="modal-head"><h2>${title}</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+    <p class="muted">${description}</p>
+    <form id="reauth-form">
+      <label class="f">Your password<input class="input" type="password" name="password" required autofocus autocomplete="current-password"></label>
+      <div class="row" style="margin-top:12px"><span class="grow"></span><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn primary">Confirm & Download</button></div>
+    </form>`.s, { onClose: () => { if (!submitted && onCancel) onCancel(); } });
+  $("#reauth-form", ov).onsubmit = async (e) => {
+    e.preventDefault();
+    const pw = new FormData(e.target).get("password").toString();
+    const submit = $('button[type="submit"]', e.target);
+    submit.disabled = true;
+    try {
+      await api("/api/auth/reauth", { method: "POST", body: { password: pw } });
+      submitted = true;
+      closeModal();
+      onSuccess && onSuccess();
+    } catch (er) { fail(er); submit.disabled = false; }
+  };
+}
+
 // Server works in IST; we display server wall-clock times as written.
 let skewMs = 0;
 const parseLocal = (s) => (s ? new Date(s.length === 16 ? s + ":00" : s) : null);
@@ -1053,11 +1076,22 @@ function taskForm(task, done) {
 }
 
 async function openTask(id, done) {
-  const [{ tasks }, { events }] = await Promise.all([api("/api/tasks" + (S.me.role === "member" ? "" : "")), api(`/api/tasks/${id}/history`)]);
+  const [{ tasks }, { events }, attRes] = await Promise.all([
+    api("/api/tasks" + (S.me.role === "member" ? "" : "")),
+    api(`/api/tasks/${id}/history`),
+    api(`/api/tasks/${id}/attachments`).catch(() => ({ attachments: [] })),
+  ]);
   const t = tasks.find((x) => x.id === id);
   if (!t) return toast("Task not found", "bad");
   const isLead = ["lead", "admin"].includes(S.me.role);
-  const ov = modal(html`<div class="modal-head"><h2>${t.title}</h2><button class="x" data-close>×</button></div>
+  const atts = attRes.attachments || [];
+  const guides = atts.filter((a) => a.purpose === "guide");
+  const evidence = atts.filter((a) => a.purpose === "evidence");
+  const fileRow = (a) => html`<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line,#e5e7eb)">
+    <div><a href="/api/tasks/${id}/attachments/${a.id}" target="_blank" rel="noopener"><b>${a.filename}</b></a>
+      <div class="muted tiny">${a.uploaded_by_name || "Unknown"} ? ${fmtDT(a.uploaded_at)} ? ${Math.max(1, Math.round((a.size||0)/1024))} KB</div></div>
+    <span class="pill">${(a.filename.split(".").pop()||"file").toUpperCase()}</span></div>`;
+  const ov = modal(html`<div class="modal-head"><h2>${t.title}</h2><button class="x" data-close>?</button></div>
     <div class="row" style="margin-bottom:12px">${statusPill(t.status)}${prioPill(t.priority)}<span class="pill">${t.task_type}</span>
       ${t.overdue ? html`<span class="pill bad">${rel(t.deadline)}</span>` : ""}</div>
     <div class="form-grid" style="margin-bottom:14px">
@@ -1065,16 +1099,51 @@ async function openTask(id, done) {
       <div><div class="muted small">Deadline</div><b>${fmtDT(t.deadline)}</b></div>
       <div><div class="muted small">Created by</div><b>${t.created_by_name || "-"}</b></div>
     </div>
-    ${t.description ? html`<p>${t.description}</p>` : ""}
+
+    <details open style="margin:10px 0"><summary><b>Task description</b></summary>
+      <div class="small" style="margin-top:8px;white-space:pre-wrap">${t.description ? t.description : html`<span class="muted">No description provided.</span>`}</div>
+    </details>
+
+    <details style="margin:10px 0"><summary><b>Task files & guides</b> <span class="muted small">(${atts.length})</span></summary>
+      <div style="margin-top:8px">
+        ${guides.length ? html`<div class="muted tiny" style="margin-bottom:6px">GUIDES / HOW TO</div>${guides.map(fileRow).join("")}` : ""}
+        ${evidence.length ? html`<div class="muted tiny" style="margin:10px 0 6px">EVIDENCE / UPLOADS</div>${evidence.map(fileRow).join("")}` : ""}
+        ${!atts.length ? html`<div class="muted small">No files yet. Guides and evidence uploaded for this task will appear here.</div>` : ""}
+      </div>
+    </details>
+
+    <div class="card" style="margin:12px 0;padding:12px">
+      <div class="muted small" style="margin-bottom:6px"><b>Evidence, explanation, and task notes</b></div>
+      <textarea class="input" id="tasknote" rows="3" placeholder="Hey I did this and that. Here is the evidence. I'm uploading this and that."></textarea>
+      <div class="row" style="margin-top:8px;gap:8px">
+        <button class="btn sm" type="button" id="dictateBtn">?? Dictate</button>
+        <span class="grow"></span>
+        <button class="btn sm" type="button" id="saveNoteBtn">Save note</button>
+      </div>
+      <div class="muted tiny" id="dictateHint" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" style="margin:12px 0;padding:12px">
+      <div class="muted small" style="margin-bottom:6px"><b>Upload evidence / task files</b> (PDF, DOCX, ZIP)</div>
+      <div class="row" style="gap:8px;align-items:center">
+        <input type="file" id="taskFileInput" class="input" accept=".pdf,.docx,.zip,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip">
+        ${isLead ? html`<select id="taskFilePurpose" class="input" style="max-width:160px"><option value="evidence">Evidence</option><option value="guide">Guide</option></select>` : ""}
+        <button class="btn sm" type="button" id="taskFileUploadBtn">Upload</button>
+      </div>
+      <div class="muted tiny" style="margin-top:6px">Upload files related to this task or supporting evidence.</div>
+    </div>
+
     <div class="row" style="margin-bottom:16px">
-      ${t.status !== "in_progress" && t.status !== "done" ? html`<button class="btn" data-st="in_progress">▶ Start</button>` : ""}
-      ${t.status !== "done" ? html`<button class="btn ok" data-st="done">✓ Mark done</button>` : html`<button class="btn" data-st="in_progress">↺ Reopen</button>`}
-      ${t.status !== "escalated" && t.status !== "done" ? html`<button class="btn warn" data-st="escalated">⚑ Escalate</button>` : ""}
-      ${isLead ? html`<span class="grow"></span><button class="btn" id="edit">✎ Edit / reassign</button>` : ""}
+      ${t.status !== "in_progress" && t.status !== "done" ? html`<button class="btn" data-st="in_progress">? Start</button>` : ""}
+      ${t.status !== "done" ? html`<button class="btn ok" data-st="done">? Mark done</button>` : html`<button class="btn" data-st="in_progress">? Reopen</button>`}
+      ${t.status !== "escalated" && t.status !== "done" ? html`<button class="btn warn" data-st="escalated">? Escalate</button>` : ""}
+      ${isLead ? html`<span class="grow"></span><button class="btn" id="edit">? Edit / reassign</button>` : ""}
     </div>
     <h3>History</h3>
     <ul class="timeline">${events.map((e) => html`<li><b>${e.actor_name || "System"}</b> ${describeEvent(e)}
-      <div class="muted tiny">${fmtDT(e.at)}</div>${e.note ? html`<div class="small" style="margin-top:3px">“${e.note}”</div>` : ""}</li>`)}</ul>`.s);
+      <div class="muted tiny">${fmtDT(e.at)}</div>${e.note ? html`<div class="small" style="margin-top:3px">?${e.note}?</div>` : ""}</li>`)}</ul>`.s);
+
+  const refresh = () => { closeModal(); openTask(id, done); };
   $$("[data-st]", ov).forEach((b) => (b.onclick = async () => {
     if (b.dataset.st === "escalated") {
       reasonModal({
@@ -1092,6 +1161,59 @@ async function openTask(id, done) {
     try { await api(`/api/tasks/${id}`, { method: "PATCH", body: { status: b.dataset.st, note: null } }); closeModal(); toast("Updated", "ok"); done && done(); } catch (er) { fail(er); }
   }));
   const ed = $("#edit", ov); if (ed) ed.onclick = () => taskForm(t, done);
+
+  const noteBox = $("#tasknote", ov);
+  const saveNote = $("#saveNoteBtn", ov);
+  if (saveNote) saveNote.onclick = async () => {
+    const note = (noteBox.value || "").trim();
+    if (!note) return toast("Write a note first", "warn");
+    saveNote.disabled = true;
+    try { await api(`/api/tasks/${id}`, { method: "PATCH", body: { note } }); toast("Note saved", "ok"); refresh(); }
+    catch (er) { saveNote.disabled = false; fail(er); }
+  };
+
+  const dictateBtn = $("#dictateBtn", ov);
+  const dictateHint = $("#dictateHint", ov);
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (dictateBtn && !SR) { dictateBtn.disabled = true; dictateHint.textContent = "Dictation not supported in this browser."; }
+  if (dictateBtn && SR) {
+    let rec = null;
+    dictateBtn.onclick = () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR();
+      rec.lang = "en-IN";
+      rec.interimResults = true;
+      rec.continuous = true;
+      dictateBtn.textContent = "? Stop";
+      dictateHint.textContent = "Listening...";
+      let finalText = noteBox.value ? noteBox.value + " " : "";
+      rec.onresult = (ev) => {
+        let interim = "";
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const chunk = ev.results[i][0].transcript;
+          if (ev.results[i].isFinal) finalText += chunk + " ";
+          else interim += chunk;
+        }
+        noteBox.value = (finalText + interim).trim();
+      };
+      rec.onerror = () => { dictateHint.textContent = "Dictation error."; };
+      rec.onend = () => { rec = null; dictateBtn.textContent = "?? Dictate"; dictateHint.textContent = "Dictation stopped."; };
+      rec.start();
+    };
+  }
+
+  const upBtn = $("#taskFileUploadBtn", ov);
+  if (upBtn) upBtn.onclick = async () => {
+    const inp = $("#taskFileInput", ov);
+    const f = inp && inp.files && inp.files[0];
+    if (!f) return toast("Choose a PDF, DOCX, or ZIP file first", "warn");
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("purpose", ($("#taskFilePurpose", ov)?.value) || "evidence");
+    upBtn.disabled = true; upBtn.textContent = "Uploading...";
+    try { await api(`/api/tasks/${id}/attachments`, { method: "POST", body: fd }); toast("File uploaded", "ok"); refresh(); }
+    catch (er) { upBtn.disabled = false; upBtn.textContent = "Upload"; fail(er); }
+  };
 }
 function describeEvent(e) {
   if (e.action === "created") return "created the task";
@@ -1381,9 +1503,17 @@ async function openDoc(id, meta) {
         ${canEdit ? html`<div><div class="muted small">Keep until</div><input class="input" type="date" id="ret" value="${d.retention_until || ""}"></div>` : ""}
         <div><div class="muted small">Text ${d.ocr_used ? "(read by OCR from the scan)" : ""}</div>
           <div class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--soft);padding:10px;border-radius:8px">${raw(highlight(r.text || "(no text)", lastSearch))}</div></div>
-        <div class="row">${window.LEADDESK_PREVIEW_MODE ? html`<button class="btn primary" type="button" disabled title="Downloads are not available in the preview">Download disabled in preview</button>` : html`<a class="btn primary" href="${src}?download=true">Download watermarked copy</a>`}${canEdit ? html`<button class="btn danger" id="delr">Request deletion</button>` : ""}</div>
+        <div class="row">${window.LEADDESK_PREVIEW_MODE ? html`<button class="btn primary" type="button" disabled title="Downloads are not available in the preview">Download disabled in preview</button>` : html`<button class="btn primary" id="dl-btn">Download watermarked copy</button>`}${canEdit ? html`<button class="btn danger" id="delr">Request deletion</button>` : ""}</div>
         <div class="muted tiny">Opening this document was recorded in the audit log.</div>
       </div></div>`.s, { wide: true });
+  const dlBtn = $("#dl-btn", ov);
+  if (dlBtn) dlBtn.onclick = () => {
+    reauthModal({
+      onSuccess: () => {
+        window.location.href = `${src}?download=true`;
+      }
+    });
+  };
   if (canEdit) {
     $("#dt", ov).onchange = async (e) => { try { await api(`/api/vault/docs/${id}`, { method: "PATCH", body: { doc_type: e.target.value } }); toast("Type corrected", "ok"); } catch (er) { fail(er); } };
     $("#ret", ov).onchange = async (e) => { try { await api(`/api/vault/docs/${id}`, { method: "PATCH", body: { retention_until: e.target.value } }); toast("Retention saved", "ok"); } catch (er) { fail(er); } };

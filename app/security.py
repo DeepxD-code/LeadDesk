@@ -22,6 +22,7 @@ from fastapi import HTTPException, Request
 UPLOAD_MAGIC = {
     ".pdf": b"%PDF",
     ".docx": b"PK" + bytes([3, 4]),
+    ".zip": b"PK" + bytes([3, 4]),
     ".png": bytes([0x89]) + b"PNG",
     ".jpg": bytes([0xFF, 0xD8, 0xFF]),
     ".jpeg": bytes([0xFF, 0xD8, 0xFF]),

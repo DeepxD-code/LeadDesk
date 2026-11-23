@@ -111,7 +111,7 @@ unmarked ones are genuinely open and are infrastructure problems, not code probl
    cannot rewrite history. Keep the hash chain as tamper evidence in transit. — **Open**.
 4. **Server-side session expiry** — **done** (`SESSION_HOURS`, default 12). Idle timeout, refresh-on-activity, and
    re-authentication for downloads and deletes — deletes already go through two-person approval; **re-auth for downloads is
-   still open**.
+   done** (requires password confirmation via `/api/auth/reauth` before download).
 5. **Rate limiting and lockout** on login — **done** (`LOGIN_MAX_FAILURES` / `LOGIN_LOCK_SECONDS`). Audit-driven alerting on
    repeated denials — **open**.
 6. **Two-person approval for deletion**, which is already modelled (`vault_delete_requests`) and enforced server-side: the
@@ -124,7 +124,6 @@ unmarked ones are genuinely open and are infrastructure problems, not code probl
 
 - KMS-backed master key with documented rotation.
 - Audit log shipping to append-only off-box storage.
-- Re-authentication for vault downloads.
 - ClamAV malware scanning on upload.
 - Field-level / metadata encryption.
 - Backups encrypted beyond the app-level ciphertext (keep `data/` and `secrets/` apart).
@@ -132,6 +131,7 @@ unmarked ones are genuinely open and are infrastructure problems, not code probl
 
 ## Already implemented beyond the minimum
 
+- Re-authentication for vault document downloads (modal password challenge with 15-minute window and audited denial).
 - Retention dates per document.
 - Expired documents remain listed with an expiry marker, but content, file, ciphertext-proof and search access are
   denied; HR/admin can renew retention or request deletion.

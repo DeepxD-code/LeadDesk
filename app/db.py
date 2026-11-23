@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  reauthed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notifications (
@@ -139,6 +140,18 @@ CREATE TABLE IF NOT EXISTS task_events (
   to_value TEXT,
   note TEXT
 );
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  filename TEXT NOT NULL,
+  stored_path TEXT NOT NULL,
+  mime TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size INTEGER NOT NULL DEFAULT 0,
+  uploaded_by INTEGER REFERENCES users(id),
+  uploaded_at TEXT NOT NULL,
+  purpose TEXT NOT NULL DEFAULT 'evidence'  -- guide | evidence
+);
+CREATE INDEX IF NOT EXISTS ix_task_attach_task ON task_attachments(task_id, purpose);
 
 -- ---------- SOP assistant ----------
 CREATE TABLE IF NOT EXISTS sop_docs (
@@ -350,6 +363,10 @@ CREATE INDEX IF NOT EXISTS ix_forum_replies_post ON forum_replies(post_id, id);
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
+    try:
+        conn.execute("ALTER TABLE sessions ADD COLUMN reauthed_at TEXT")
+    except Exception:
+        pass
     if not q1("SELECT value FROM settings WHERE key='overload_threshold'"):
         ex("INSERT INTO settings(key, value) VALUES ('overload_threshold', '6')")
 

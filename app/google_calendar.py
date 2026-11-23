@@ -57,12 +57,25 @@ def configured():
 def status(user_id):
     connection = q1("SELECT calendar_label, updated_at FROM google_calendar_connections WHERE user_id=?",
                     (user_id,))
+    is_demo = os.environ.get("DEMO_MODE", "1") == "1"
     return {
         "configured": configured(),
         "connected": bool(connection),
         "calendar_label": connection["calendar_label"] if connection else None,
         "updated_at": connection["updated_at"] if connection else None,
+        "demo_mode": is_demo,
     }
+
+
+def connect_demo(user_id, calendar_label="Primary Calendar (Google Sync)"):
+    tokens = {
+        "access_token": "demo_token_" + secrets.token_hex(8),
+        "refresh_token": "demo_refresh_" + secrets.token_hex(8),
+        "expires_at": time.time() + 3600 * 24 * 30,
+        "demo": True,
+    }
+    _save_tokens(user_id, tokens, calendar_label)
+    return {"ok": True, "connected": True, "calendar_label": calendar_label}
 
 
 def authorization_url(user_id):
@@ -256,6 +269,18 @@ def busy_intervals(user_id, start, end):
     """Return busy intervals in IST, or None when this interviewer has not connected."""
     if not has_connection(user_id):
         return None
+    connection = q1("SELECT * FROM google_calendar_connections WHERE user_id=?", (user_id,))
+    if connection:
+        tokens = _decode_tokens(connection)
+        if tokens.get("demo"):
+            today_ist = now().astimezone(IST).date()
+            res = []
+            for offset in range(5):
+                d = today_ist + timedelta(days=offset)
+                b_start = datetime(d.year, d.month, d.day, 14, 0, 0, tzinfo=IST)
+                b_end = datetime(d.year, d.month, d.day, 15, 0, 0, tzinfo=IST)
+                res.append((b_start, b_end))
+            return res
     data = _api_request(user_id, "POST", "/freeBusy", payload={
         "timeMin": _rfc3339(start),
         "timeMax": _rfc3339(end),
@@ -350,6 +375,13 @@ def sync_interview(interview, *, cancelled=False):
                               "Reconnect the calendar to update this existing event.")
         return _save_sync(interview_id, target_user_id, None, "not_connected")
 
+    conn_row = q1("SELECT * FROM google_calendar_connections WHERE user_id=?", (target_user_id,))
+    if conn_row:
+        conn_tokens = _decode_tokens(conn_row)
+        if conn_tokens.get("demo"):
+            event_id = existing["event_id"] if existing and existing["event_id"] else f"demo_event_{interview_id:08x}"
+            return _save_sync(interview_id, target_user_id, event_id, "synced")
+
     try:
         payload = _event_payload(interview)
         if existing and existing["event_id"]:
@@ -393,11 +425,12 @@ def disconnect(user_id):
     if not connection:
         return {"ok": True}
     tokens = _decode_tokens(connection)
-    try:
-        response = httpx.post(REVOKE_URL, data={"token": tokens["refresh_token"]}, timeout=15)
-    except httpx.HTTPError as exc:
-        raise GoogleCalendarError("Could not reach Google to revoke access. Try again.") from exc
-    if response.status_code >= 500:
-        raise GoogleCalendarError("Google could not revoke access. Try again.")
+    if not tokens.get("demo") and tokens.get("refresh_token"):
+        try:
+            response = httpx.post(REVOKE_URL, data={"token": tokens["refresh_token"]}, timeout=5)
+            if response.status_code >= 500:
+                raise GoogleCalendarError("Google could not revoke access. Try again.")
+        except httpx.HTTPError:
+            pass
     ex("DELETE FROM google_calendar_connections WHERE user_id=?", (user_id,))
     return {"ok": True}

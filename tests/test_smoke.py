@@ -438,3 +438,30 @@ def test_only_leads_can_decide_a_leave(member):
     created = member.post("/api/leaves", json={"start_date": "2026-12-05", "end_date": "2026-12-06"})
     lid = created.json()["id"]
     assert member.post(f"/api/leaves/{lid}/decide", json={"status": "approved"}).status_code == 403
+
+
+# ---------------------------------------------------------------- re-auth & vault download
+
+def test_vault_download_requires_reauthentication(admin):
+    docs = admin.get("/api/vault/docs").json()["docs"]
+    assert len(docs) > 0
+    doc_id = docs[0]["id"]
+
+    # Without re-authentication, download request is refused with 403
+    r = admin.get(f"/api/vault/docs/{doc_id}/file?download=true")
+    assert r.status_code == 403
+    assert "Re-authentication required" in r.text
+
+    # Wrong password fails re-auth
+    bad = admin.post("/api/auth/reauth", json={"password": "wrongpassword"})
+    assert bad.status_code == 401
+
+    # Correct password succeeds
+    good = admin.post("/api/auth/reauth", json={"password": "demo1234"})
+    assert good.status_code == 200
+    assert good.json()["ok"] is True
+
+    # Now download succeeds with 200
+    dl = admin.get(f"/api/vault/docs/{doc_id}/file?download=true")
+    assert dl.status_code == 200
+    assert dl.headers["Content-Disposition"].startswith("attachment;")
