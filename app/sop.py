@@ -278,11 +278,11 @@ LANG_NAMES = {"en": "English", "hi": "Hindi", "gu": "Gujarati"}
 
 
 TRANSLATE_PROMPT = """Translate the user's question from Hindi or Gujarati into plain English.
-Keep every number, code, amount and form name exactly as written. Output only the English question.
+Keep every number, code, amount, form name and role name exactly as written. Output only the English question.
 Examples:
 त्रुटि 503 आने पर क्या करें? -> What should I do when error 503 appears?
 ઓવરટાઇમ માટે કોની મંજૂરી જોઈએ? -> Whose approval is needed for overtime?
-₹5,000 का रिफंड कौन मंजूर करता है? -> Who approves a refund of ₹5,000?"""
+₹15,000 થી વધુ રિફંડ કોણ મંજૂર કરે છે? -> Who approves a refund above ₹15,000?"""
 
 
 def to_english(question: str, lang: str) -> str:
@@ -295,11 +295,17 @@ def to_english(question: str, lang: str) -> str:
 
 # ---------------------------------------------------------------- answering
 
-SYSTEM_PROMPT = """You answer questions from back-office staff using ONLY the SOP excerpts you are given.
+SYSTEM_PROMPT = """You are a careful back-office SOP assistant. Answer using ONLY the SOP excerpts provided.
+
 Return JSON: {"found": true|false, "answer": "...", "sources": [excerpt numbers used]}
-- found=true only if the excerpts state the answer. Then "answer" is 1-3 short sentences or numbered steps that
-  directly answer the question, copying codes, amounts, form names, times and role titles exactly as written.
-- found=false if the excerpts do not contain the answer. Never use outside knowledge and never guess."""
+
+Rules:
+- found=true only when the excerpts clearly contain the answer. Do not use outside knowledge or guess.
+- "answer" must be direct and actionable: 1-3 short sentences or numbered steps. No preamble.
+- Copy codes, amounts, form names, times, role titles, and thresholds exactly as written in the SOP.
+- If multiple excerpts are relevant, synthesize them using only what they state.
+- "sources" must list the excerpt numbers you actually used (e.g. [1] or [1,2]).
+- found=false when the excerpts do not contain the answer. Set answer to "" and sources to []."""
 
 STRONG_MATCH = float(os.environ.get("SOP_STRONG_MATCH", "0.33"))
 
