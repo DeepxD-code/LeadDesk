@@ -211,9 +211,9 @@ ufw allow 22,80,443/tcp && ufw enable
 
 ---
 
-## Path C: a managed host (Render, Railway, Fly and similar)
+## Path C: a managed host (Render, Railway, Fly, Hugging Face Spaces)
 
-The app is a normal container listening on `8000` and reading two filesystem paths.
+The app is a normal container listening on `8000` (or `$PORT`) and reading two filesystem paths.
 What such platforms need you to do:
 
 1. Deploy from the repository using the existing `Dockerfile`.
@@ -223,10 +223,32 @@ What such platforms need you to do:
 3. Set the environment: `PUBLIC_BASE_URL=https://<your-url>`, `DEMO_MODE=0`.
 4. Keep **one instance**. Two instances mean two schedulers and duplicate reminders,
    and SQLite is a single file.
-5. These platforms do not run the compose file, so there is no bundled Ollama.
-   Deploy `ollama/ollama` as a second service with a persistent models volume and
-   point `OLLAMA_URL` at it, or leave `OLLAMA_URL` unset: the assistant runs in
-   extractive mode and the eval still passes 10/10.
+5. For AI, either deploy Ollama as a second service, or use a free OpenAI-compatible API.
+
+### Free deploy with AI (no PC, no local Ollama)
+
+The easiest free path is **Hugging Face Spaces (Docker)** + a **free Groq API key**.
+
+1. Create a free Groq key at https://console.groq.com/keys.
+2. Create a new Hugging Face Space: SDK = **Docker**.
+3. Push this repo (or upload files) to the Space. The included `Dockerfile` works;
+   HF Spaces sets `PORT` automatically.
+4. In Space **Settings → Variables and secrets**, add:
+
+   | Name | Value | Secret? |
+   |---|---|---|
+   | `LLM_PROVIDER` | `openai` | no |
+   | `OPENAI_BASE_URL` | `https://api.groq.com/openai/v1` | no |
+   | `OPENAI_API_KEY` | `gsk_...` | **yes** |
+   | `LLM_MODEL` | `llama-3.1-8b-instant` | no |
+   | `DEMO_MODE` | `1` (demo) or `0` (real) | no |
+   | `SEED_DEMO` | `1` | no |
+
+5. Without persistent storage, the SQLite DB and vault key reset on restart.
+   For a real test, enable persistent storage or mount `/app/data` and `/app/secrets`.
+
+The app will report AI online and answer SOP questions through Groq. No Ollama, no GPU,
+no local install required.
 
 ---
 

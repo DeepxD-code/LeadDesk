@@ -9,9 +9,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Ollama runs as a service in this compose file; override OLLAMA_URL to use a host install.
+      # AI: local Ollama by default, or set LLM_PROVIDER=openai + OPENAI_* for a hosted API.
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TEST_REPORT_EMAIL: ${TEST_REPORT_EMAIL:-leaddesk-test@localhost}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
