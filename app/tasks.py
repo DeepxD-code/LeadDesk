@@ -221,8 +221,9 @@ async def upload_task_attachment(task_id: int, purpose: str = Form("evidence"),
     data = await file.read(limit + 1)
     if not data or len(data) > limit:
         raise HTTPException(400, "File is empty or larger than 15 MB")
-    from .security import check_magic
+    from .security import check_magic, scan_upload
     check_magic(data, name)
+    scan_upload(data, name)
     os.makedirs(TASK_FILES_DIR, exist_ok=True)
     stored = f"{task_id}_{uuid.uuid4().hex}_{name}"
     path = os.path.join(TASK_FILES_DIR, stored)

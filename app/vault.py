@@ -3,12 +3,17 @@ import hashlib
 import html
 import io
 import json
+import logging
 import mimetypes
 import os
 import re
 import threading
+import urllib.error
+import urllib.request
 import uuid
 from datetime import date
+
+log = logging.getLogger("leaddesk.vault")
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -18,7 +23,7 @@ from . import auth, crypto
 from .auth import current_user, require
 from .db import DATA_DIR, ex, now, now_s, q, q1, tx
 from .ocr import extract_text
-from .security import check_magic
+from .security import check_magic, scan_upload
 
 router = APIRouter(prefix="/api/vault", tags=["vault"])
 STORE_DIR = os.path.join(DATA_DIR, "vault")
@@ -28,9 +33,69 @@ ALLOWED_EXT = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".docx", ".txt"
 # ------------------------------------------------------------------ audit log (hash-chained, append-only)
 
 _audit_lock = threading.Lock()
+AUDIT_SHIP_FILE = os.environ.get("AUDIT_SHIP_FILE", "").strip()
+AUDIT_SHIP_URL = os.environ.get("AUDIT_SHIP_URL", "").strip()
+AUDIT_SHIP_TIMEOUT = float(os.environ.get("AUDIT_SHIP_TIMEOUT", "5"))
+AUDIT_ALERT_WEBHOOK = os.environ.get("AUDIT_ALERT_WEBHOOK", "").strip()
+AUDIT_ALERT_DENIAL_THRESHOLD = int(os.environ.get("AUDIT_ALERT_DENIAL_THRESHOLD", "5"))
+AUDIT_ALERT_WINDOW_MINUTES = int(os.environ.get("AUDIT_ALERT_WINDOW_MINUTES", "15"))
+
+
+def _ship_audit(record: dict) -> None:
+    payload = json.dumps(record, sort_keys=True)
+    if AUDIT_SHIP_FILE:
+        try:
+            p = Path(AUDIT_SHIP_FILE)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open("a", encoding="utf-8") as f:
+                f.write(payload + "\n")
+        except Exception as exc:
+            log.warning("Audit ship file failed: %s", exc)
+    if AUDIT_SHIP_URL:
+        try:
+            req = urllib.request.Request(
+                AUDIT_SHIP_URL,
+                data=payload.encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "LeadDesk-Audit/1.0"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=AUDIT_SHIP_TIMEOUT):
+                pass
+        except Exception as exc:
+            log.warning("Audit ship URL failed: %s", exc)
+
+
+def _alert_denials(record: dict) -> None:
+    if record.get("outcome") != "denied":
+        return
+    try:
+        row = q1(
+            "SELECT COUNT(*) AS n FROM audit_log WHERE outcome='denied' AND at >= datetime('now', ?)",
+            (f"-{AUDIT_ALERT_WINDOW_MINUTES} minutes",),
+        )
+        count = row["n"] if row else 0
+    except Exception:
+        return
+    if count < AUDIT_ALERT_DENIAL_THRESHOLD:
+        return
+    alert = {"type": "audit_denial_threshold", "count": count, "window_minutes": AUDIT_ALERT_WINDOW_MINUTES, "record": record}
+    log.warning("AUDIT ALERT: %s", json.dumps(alert, sort_keys=True))
+    if AUDIT_ALERT_WEBHOOK:
+        try:
+            req = urllib.request.Request(
+                AUDIT_ALERT_WEBHOOK,
+                data=json.dumps(alert, sort_keys=True).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "LeadDesk-Audit/1.0"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=AUDIT_SHIP_TIMEOUT):
+                pass
+        except Exception as exc:
+            log.warning("Audit alert webhook failed: %s", exc)
 
 
 def audit(user, action, doc_id=None, detail=None, outcome="allowed"):
+    shipped = None
     with _audit_lock, tx():
         last = q1("SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1")
         prev = last["hash"] if last else "0" * 64
@@ -42,6 +107,10 @@ def audit(user, action, doc_id=None, detail=None, outcome="allowed"):
         ex("""INSERT INTO audit_log(at, user_id, username, role, action, doc_id, detail, outcome, prev_hash, hash)
               VALUES (:at,:user_id,:username,:role,:action,:doc_id,:detail,:outcome,:prev,:hash)""",
            rec | {"prev": prev, "hash": h})
+        shipped = rec | {"prev_hash": prev, "hash": h}
+    if shipped:
+        _ship_audit(shipped)
+        _alert_denials(shipped)
 
 
 def verify_chain():
@@ -122,6 +191,18 @@ def _retention_expired(doc):
         return True
 
 
+def _dec_doc(doc):
+    if not doc:
+        return doc
+    d = dict(doc)
+    if "original_name" in d:
+        try:
+            d["original_name"] = crypto.decrypt_field(d["original_name"], "vault_docs.original_name")
+        except Exception:
+            log.warning("Could not decrypt vault_docs.original_name for doc %s", d.get("id"))
+    return d
+
+
 def _get_doc_checked(doc_id, user, action, allow_expired=False):
     doc = q1("SELECT * FROM vault_docs WHERE id=? AND deleted=0", (doc_id,))
     if not doc:
@@ -133,10 +214,11 @@ def _get_doc_checked(doc_id, user, action, allow_expired=False):
     if _retention_expired(doc) and not allow_expired:
         audit(user, action, doc_id, "document retention period expired", "denied")
         raise HTTPException(410, "Document retention period has expired")
-    return doc
+    return _dec_doc(doc)
 
 
 def _public(doc):
+    doc = _dec_doc(doc)
     d = {k: v for k, v in doc.items() if k not in ("wrapped_key", "text_enc", "storage_name", "sha256")}
     d["doc_type_label"] = DOC_TYPES.get(doc["doc_type"], doc["doc_type"])
     d["retention_expired"] = _retention_expired(doc)
@@ -169,11 +251,13 @@ def store_document(data: bytes, filename: str, employee_id: str, user, doc_type=
         f.write(crypto.encrypt_blob(dek, data, storage_name))
     text_enc = crypto.encrypt_blob(dek, text.encode(), storage_name + ":text")
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    plain_name = os.path.basename(filename)
+    stored_name = crypto.encrypt_field(plain_name, "vault_docs.original_name")
     doc_id = ex("""INSERT INTO vault_docs(employee_id, department, doc_type, doc_type_source, type_reason, original_name,
                    mime, size, uploaded_by, uploaded_at, retention_until, storage_name, wrapped_key, sha256, ocr_used, text_enc)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (emp["employee_id"], emp["department"], final_type, "user" if doc_type in DOC_TYPES else "rule",
-                 reason if doc_type not in DOC_TYPES else "set at upload", os.path.basename(filename), mime, len(data),
+                 reason if doc_type not in DOC_TYPES else "set at upload", stored_name, mime, len(data),
                  user["id"], now_s(), retention_until or None, storage_name, wrapped,
                  hashlib.sha256(data).hexdigest(), int(ocr_used), text_enc))
     TEXT[doc_id] = text
@@ -267,6 +351,7 @@ async def upload(file: UploadFile = File(...), employee_id: str = Form(...), doc
     if not data or len(data) > limit:
         raise HTTPException(400, "File is empty or larger than 20 MB")
     check_magic(data, file.filename or "upload")
+    scan_upload(data, file.filename or "upload")
     if retention_until:
         try:
             date.fromisoformat(retention_until)
@@ -362,8 +447,9 @@ def search(qs: str, user=Depends(current_user)):
                if can_access(user, d) and not _retention_expired(d)}
     results = []
     for doc_id, d in visible.items():
+        d = _dec_doc(d)
         text = TEXT.get(doc_id, "")
-        hay = re.sub(r"\s+", " ", (text + " " + d["original_name"].replace("_", " "))).lower()
+        hay = re.sub(r"\s+", " ", (text + " " + (d["original_name"] or "").replace("_", " "))).lower()
         if phrase in hay:
             score = 100 + hay.count(phrase)
         elif terms and all(t in hay for t in terms):

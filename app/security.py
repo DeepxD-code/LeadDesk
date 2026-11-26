@@ -10,12 +10,17 @@ Three things a public deployment needs that a local demo does not:
 Everything here is driven by environment variables so a local demo runs exactly
 as before. Nothing in this module knows about any specific screen.
 """
+import logging
 import os
+import socket
+import struct
 import threading
 import time
 from collections import defaultdict
 
 from fastapi import HTTPException, Request
+
+log = logging.getLogger("leaddesk.security")
 
 # ---------------------------------------------------------------- upload magic bytes
 
@@ -42,6 +47,55 @@ def check_magic(data: bytes, filename: str) -> None:
         return
     if not data.startswith(magic):
         raise HTTPException(400, f"File content does not match the declared type {ext}")
+
+
+# ---------------------------------------------------------------- ClamAV upload scan
+
+CLAMAV_HOST = os.environ.get("CLAMAV_HOST", "").strip()
+CLAMAV_PORT = int(os.environ.get("CLAMAV_PORT", "3310"))
+CLAMAV_TIMEOUT = float(os.environ.get("CLAMAV_TIMEOUT", "15"))
+CLAMAV_REQUIRED = os.environ.get("CLAMAV_REQUIRED", "").strip().lower() in ("1", "true", "yes")
+
+
+def scan_upload(data: bytes, filename: str = "upload") -> None:
+    """Scan upload bytes with ClamAV (clamd INSTREAM) when configured.
+
+    CLAMAV_HOST enables scanning. CLAMAV_REQUIRED=1 makes scanner unavailability a hard reject.
+    When not configured, this is a no-op to preserve local/demo behavior.
+    """
+    if not CLAMAV_HOST:
+        if CLAMAV_REQUIRED:
+            raise HTTPException(503, "Upload scanning is required but ClamAV is not configured")
+        return
+    try:
+        with socket.create_connection((CLAMAV_HOST, CLAMAV_PORT), timeout=CLAMAV_TIMEOUT) as sock:
+            sock.settimeout(CLAMAV_TIMEOUT)
+            sock.sendall(b"zINSTREAM\0")
+            chunk = 8192
+            for i in range(0, len(data), chunk):
+                part = data[i:i + chunk]
+                sock.sendall(struct.pack(">I", len(part)) + part)
+            sock.sendall(struct.pack(">I", 0))
+            resp = b""
+            while b"\0" not in resp and len(resp) < 4096:
+                buf = sock.recv(4096)
+                if not buf:
+                    break
+                resp += buf
+        text = resp.decode("utf-8", errors="replace").strip("\0").strip()
+        if text.endswith("OK"):
+            return
+        if "FOUND" in text:
+            log.warning("ClamAV rejected upload %s: %s", filename, text)
+            raise HTTPException(400, "Upload rejected by malware scan")
+        raise RuntimeError(text or "unexpected ClamAV response")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.warning("ClamAV scan failed for %s: %s", filename, exc)
+        if CLAMAV_REQUIRED:
+            raise HTTPException(503, "Upload scanning unavailable; try again later")
+        return
 
 
 # ---------------------------------------------------------------- headers

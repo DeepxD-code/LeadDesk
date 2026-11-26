@@ -117,16 +117,16 @@ unmarked ones are genuinely open and are infrastructure problems, not code probl
 6. **Two-person approval for deletion**, which is already modelled (`vault_delete_requests`) and enforced server-side: the
    approver must differ from the requester, with a second approver required for the decision. — **Done**.
 7. **Antivirus scanning** (ClamAV) on upload, and content-type validation by magic bytes rather than file extension. —
-   **Magic bytes validation is done** in-app; ClamAV itself is **open**.
+   **Magic bytes validation is done** in-app; ClamAV scanning is **Live (configurable)** via `CLAMAV_HOST`/`CLAMAV_REQUIRED`.
 8. **Field-level encryption or a separate metadata store** if filenames and employee IDs are themselves sensitive. — **Open**.
 
 ## Remaining production gaps (short list)
 
-- KMS-backed master key with documented rotation.
-- Audit log shipping to append-only off-box storage.
-- ClamAV malware scanning on upload.
-- Field-level / metadata encryption.
-- Backups encrypted beyond the app-level ciphertext (keep `data/` and `secrets/` apart).
+- **KMS-backed master key with documented rotation.** — **Live (configurable).** `VAULT_MASTER_KEY_COMMAND` can call a KMS/Vault CLI wrapper that returns the base64 32-byte KEK; local file/env key remains supported for dev/demo. See `docs/DEPLOY.md` for rotation procedure.
+- **Audit log shipping to append-only off-box storage.** — **Live (configurable).** Set `AUDIT_SHIP_FILE` (append-only JSONL) and/or `AUDIT_SHIP_URL` (POST per audit record). Local hash-chained audit log remains source of truth.
+- **ClamAV malware scanning on upload.** — **Live (configurable).** Set `CLAMAV_HOST`/`CLAMAV_PORT`; `CLAMAV_REQUIRED=1` fails closed when scanner is unavailable. Applied to vault/SOP/task uploads.
+- **Field-level / metadata encryption.** — **Live (partial, extendable).** Vault `original_name` is encrypted at rest (`enc:v1:...`) with transparent decrypt on read; legacy plaintext rows remain readable. Extend same pattern to other sensitive metadata as needed.
+- **Backups encrypted beyond the app-level ciphertext (keep `data/` and `secrets/` apart).** — **Live (scripted).** Use `scripts/backup-vault.ps1` to create an encrypted backup archive; keep backup key separate from host.
 
 
 ## Already implemented beyond the minimum

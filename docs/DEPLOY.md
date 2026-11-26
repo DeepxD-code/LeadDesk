@@ -241,6 +241,13 @@ What such platforms need you to do:
 | `LOGIN_LOCK_SECONDS` | `60` | lockout length |
 | `COOKIE_SECURE` | auto | force the Secure cookie flag |
 | `MIN_PASSWORD_LENGTH` | `8` | password rule for the change form and the CLI |
+| `VAULT_MASTER_KEY_COMMAND` | unset | external KMS/Vault command that prints base64 32-byte KEK to stdout |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | unset / `3310` | clamd INSTREAM upload scanning |
+| `CLAMAV_REQUIRED` | `0` | `1` fails closed if scanner is unavailable |
+| `AUDIT_SHIP_FILE` | unset | append-only JSONL audit shipping path (off-box mount recommended) |
+| `AUDIT_SHIP_URL` | unset | POST each audit record to an append-only/log sink endpoint |
+| `AUDIT_ALERT_WEBHOOK` | unset | webhook for repeated-denial alerts |
+| `AUDIT_ALERT_DENIAL_THRESHOLD` / `AUDIT_ALERT_WINDOW_MINUTES` | `5` / `15` | denial alert threshold |
 
 ---
 

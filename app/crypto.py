@@ -10,6 +10,7 @@ import base64
 import hashlib
 import logging
 import os
+import subprocess
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -28,8 +29,18 @@ def load_master_key() -> bytes:
     if _KEK:
         return _KEK
     env = os.environ.get("VAULT_MASTER_KEY")
+    cmd = os.environ.get("VAULT_MASTER_KEY_COMMAND", "").strip()
     if env:
         key = base64.b64decode(env)
+    elif cmd:
+        # External key provider hook (KMS/Vault CLI wrapper). Command must print base64 32-byte key to stdout.
+        try:
+            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15, check=False)
+        except Exception as exc:
+            raise RuntimeError(f"Vault master key command failed: {exc}") from exc
+        if proc.returncode != 0:
+            raise RuntimeError("Vault master key command returned non-zero exit status")
+        key = base64.b64decode(proc.stdout.strip())
     else:
         path = _default_key_file()
         if not os.path.exists(path):
@@ -82,3 +93,26 @@ def decrypt_blob(dek: bytes, blob: bytes, aad: str) -> bytes:
     if not blob.startswith(MAGIC):
         raise ValueError("Not a vault blob")
     return _open(dek, blob[len(MAGIC):], aad.encode())
+
+
+# Field-level encryption for sensitive metadata at rest. Values are stored as
+# "enc:v1:<base64>" so legacy plaintext rows remain readable.
+FIELD_PREFIX = "enc:v1:"
+
+
+def encrypt_field(value: str | None, aad: str) -> str | None:
+    if value is None:
+        return None
+    if value.startswith(FIELD_PREFIX):
+        return value
+    blob = _seal(load_master_key(), value.encode("utf-8"), aad.encode("utf-8"))
+    return FIELD_PREFIX + base64.b64encode(blob).decode("ascii")
+
+
+def decrypt_field(value: str | None, aad: str) -> str | None:
+    if value is None:
+        return None
+    if not value.startswith(FIELD_PREFIX):
+        return value
+    raw = base64.b64decode(value[len(FIELD_PREFIX):].encode("ascii"))
+    return _open(load_master_key(), raw, aad.encode("utf-8")).decode("utf-8")
