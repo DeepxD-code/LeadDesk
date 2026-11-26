@@ -23,7 +23,7 @@ cross-cutting access checks; the document vault (Problem 2) and interview schedu
 |---|---|---|---|
 | **P1** | A team lead cannot see the whole workload, and answers the same SOP questions all day | Task board + workload view + SOP assistant that answers only from uploaded SOPs, cites the source, and hands over what it cannot answer | Sections 1 and 2 |
 
-Section 5 checks the things that cut across the workspace: roles, sign-in, mobile
+Section 3 checks the things that cut across the workspace: roles, sign-in, mobile
 layout, and the report form itself.
 
 **Your job:** perform each test on the deployed app and mark PASS or FAIL. Do not
@@ -35,7 +35,7 @@ flowchart TB
   A --> P1["Problem 1"]
   P1 --> S1["Section 1<br/>Task board + workload"]
   P1 --> S2["Section 2<br/>SOP assistant + AI quality"]
-  A --> X["Section 5<br/>Roles, security, mobile, reporting"]
+  A --> X["Section 3<br/>Roles, security, mobile, reporting"]
   S1 --> R["Record results"]
   S2 --> R
   X --> R
@@ -748,7 +748,7 @@ flowchart LR
 
 
 
-## Section 5 — Cross-cutting access, security and UX
+## Section 3 — Cross-cutting access, security and UX
 
 **What this proves:** the roles hold outside the happy path, sign-in resists
 guessing, the app works on a phone, and testers can report problems.
@@ -762,11 +762,11 @@ flowchart LR
   E --> F["Performance + console"]
 ```
 
-### T5.1 — Role boundaries hold on direct URLs
+### T3.1 — Role boundaries hold on direct URLs
 
 `m01`, `hr1`, `tester` · Cross-cutting · Permissions
 
-![tester opening #/vault lands on the forum - no vault data.](tester/T5.1-role.png)
+![tester opening #/vault lands on the forum - no vault data.](tester/T3.1-role.png)
 
 *tester opening #/vault lands on the forum - no vault data.*
 
@@ -774,7 +774,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   A["m01 opens #/board"] --> B{"Redirected to My tasks?"}
-  B -->|no| X["FAIL — report T5.1 (S1)"]
+  B -->|no| X["FAIL — report T3.1 (S1)"]
   B -->|yes| C["m01 opens #/audit"]
   C --> D{"Redirected, no audit data?"}
   D -->|yes| E["hr1 opens #/audit"]
@@ -804,11 +804,11 @@ flowchart LR
 
 ---
 
-### T5.2 — Five wrong passwords lock the account for 60 seconds
+### T3.2 — Five wrong passwords lock the account for 60 seconds
 
 `tester` · Cross-cutting · Brute force
 
-![Lockout after five failures: 'Too many failed attempts. Try again in 59 seconds.'](tester/T5.2-lockout.png)
+![Lockout after five failures: 'Too many failed attempts. Try again in 59 seconds.'](tester/T3.2-lockout.png)
 
 *Lockout after five failures: 'Too many failed attempts. Try again in 59 seconds.'*
 
@@ -817,7 +817,7 @@ flowchart LR
 flowchart LR
   A["Sign out"] --> B["Wrong password ×5 for tester"]
   B --> C{"Locked message?"}
-  C -->|no| X["FAIL — report T5.2"]
+  C -->|no| X["FAIL — report T3.2"]
   C -->|yes| D["Wait 60 s, sign in correctly"]
   D --> E{"Sign-in works again?"}
   E -->|yes| P[PASS]
@@ -843,11 +843,11 @@ flowchart LR
 
 ---
 
-### T5.3 — Sign-out and deep links do not restore a session
+### T3.3 — Sign-out and deep links do not restore a session
 
 `lead` · Cross-cutting · Session
 
-![After Sign out, Back and deep links return to the login page.](tester/T5.3-signout.png)
+![After Sign out, Back and deep links return to the login page.](tester/T3.3-signout.png)
 
 *After Sign out, Back and deep links return to the login page.*
 
@@ -856,7 +856,7 @@ flowchart LR
 flowchart LR
   A["Sign in as lead"] --> B["Sign out"]
   B --> C{"Login page?"}
-  C -->|no| X["FAIL — report T5.3"]
+  C -->|no| X["FAIL — report T3.3"]
   C -->|yes| D["Press Back"]
   D --> E{"No data, still signed out?"}
   E -->|yes| F["Open #/audit directly"]
@@ -881,11 +881,11 @@ flowchart LR
 
 ---
 
-### T5.4 — The app is usable at phone width
+### T3.4 — The app is usable at phone width
 
 `m01` · Cross-cutting · Responsive
 
-![390 px phone layout: no horizontal scroll, bottom navigation.](tester/T5.4-mobile.png)
+![390 px phone layout: no horizontal scroll, bottom navigation.](tester/T3.4-mobile.png)
 
 *390 px phone layout: no horizontal scroll, bottom navigation.*
 
@@ -894,7 +894,7 @@ flowchart LR
 flowchart LR
   A["Open DevTools device mode at 390 px"] --> B["My tasks"]
   B --> C{"No horizontal scrolling?"}
-  C -->|no| X["FAIL — report T5.4"]
+  C -->|no| X["FAIL — report T3.4"]
   C -->|yes| D["Open the menu"]
   D --> E{"Drawer navigates?"}
   E -->|yes| F["Open the assistant + a task"]
@@ -923,11 +923,11 @@ you.
 
 ---
 
-### T5.5 — The in-app report reaches the team
+### T3.5 — The in-app report reaches the team
 
 `m01` · Cross-cutting · Reporting
 
-![Filled Report a problem dialog with area, severity, summary and steps.](tester/T5.5-report.png)
+![Filled Report a problem dialog with area, severity, summary and steps.](tester/T3.5-report.png)
 
 *Filled Report a problem dialog with area, severity, summary and steps.*
 
@@ -937,7 +937,7 @@ flowchart LR
   A["Account menu → Report a problem"] --> B["Fill area, severity, summary, steps"]
   B --> C["Send report"]
   C --> D{"Toast: Report sent?"}
-  D -->|no| X["FAIL — report T5.5"]
+  D -->|no| X["FAIL — report T3.5"]
   D -->|yes| E["Check Mailpit or Sent emails"]
   E --> F{"Subject starts [LeadDesk][severity][area]?"}
   F -->|yes| G{"Body has account, page, steps?"}
@@ -949,7 +949,7 @@ flowchart LR
 
 1. As `m01`, open the account menu → **Report a problem**.
 2. Area: **Interviews**; Severity: **Major**; Summary:
-   `T5.5 test report — please ignore`; Steps: `1. Open the form 2. Press Send`.
+   `T3.5 test report — please ignore`; Steps: `1. Open the form 2. Press Send`.
 3. Press **Send report**.
 4. Check Mailpit / **Sent emails**.
 
@@ -957,7 +957,7 @@ flowchart LR
 
 - A success toast appears and the modal closes.
 - The email subject is
-  `[LeadDesk][major][Interviews] T5.5 test report — please ignore`.
+  `[LeadDesk][major][Interviews] T3.5 test report — please ignore`.
 - The body includes the sender's name, username and role, the page URL, the steps,
   expected and actual.
 - The message is listed even if SMTP is down (outbox only).
@@ -968,11 +968,11 @@ flowchart LR
 
 ---
 
-### T5.6 — Pages load cleanly and the AI answers in time
+### T3.6 — Pages load cleanly and the AI answers in time
 
 `lead` · Cross-cutting · Performance
 
-![Local AI online (qwen2.5:3b) and 25 SOP sections indexed.](tester/T5.6-ai-answer-time.png)
+![Local AI online (qwen2.5:3b) and 25 SOP sections indexed.](tester/T3.6-ai-answer-time.png)
 
 *Local AI online (qwen2.5:3b) and 25 SOP sections indexed.*
 
@@ -982,7 +982,7 @@ flowchart LR
   A["Open DevTools Console"] --> B["Visit Overview, Board, Assistant"]
   B --> C{"Any red errors on load?"}
   C -->|no| D["Ask one SOP question"]
-  C -->|yes| X["FAIL — screenshot console + report T5.6"]
+  C -->|yes| X["FAIL — screenshot console + report T3.6"]
   D --> E{"Answer under 60 s?"}
   E -->|yes| F{"Pages feel responsive (< 2 s on LAN)?"}
   F -->|yes| P[PASS]
@@ -1011,7 +1011,7 @@ never returns.
 ---
 
 
-## 6. Known limits — do not report these as bugs
+## 4. Known limits — do not report these as bugs
 
 | Behaviour | Why it is expected |
 |---|---|
