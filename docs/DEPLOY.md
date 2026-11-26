@@ -149,6 +149,18 @@ find /root -name 'leaddesk-*.tar.gz' -mtime +14 -delete
 
 Restore: stop the stack, unpack the archive over `data/` and `secrets/`, start again.
 
+On Windows (the local demo host), use the packaged script instead. It needs 7-Zip
+(`winget install 7zip.7zip`), asks for a password, writes an AES-encrypted `.7z` with
+encrypted headers, and verifies the archive before reporting success:
+
+```powershell
+# write the backup to a second disk, not the repo drive
+.\scripts\backup-vault.ps1 -OutDir D:\LeadDeskBackups
+```
+
+Set `LEADDESK_BACKUP_DIR` to change the default target. The password is never stored;
+keep it in a password manager off this machine. Unencrypted backups are refused.
+
 ### Updating
 
 ```bash
