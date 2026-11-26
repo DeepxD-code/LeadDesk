@@ -1,14 +1,15 @@
 # LeadDesk — human tester's guide
 
 **Version 1.0 · 27 Nov 2026**
-**Instance under test:** `____________________________` (your organiser fills this in)
 
-Everywhere this guide says `BASE_URL`, use that address. The local demo is
-`http://localhost:8000`. Times are **IST**.
+**Instance under test:** `http://localhost:8000`
+
+The host has prepared this instance. The handover table in section 2 lists
+everything you need. Times are **IST**.
 
 This guide is written for a human tester who has never seen the product. You do not
 need to read code. Each test has a picture of the path, exact clicks, what a pass
-looks like, and a one-line way to report a failure.
+looks like, and the one thing that should fail it.
 
 ---
 
@@ -25,8 +26,8 @@ LeadDesk is one workspace with three products built from three problem statement
 Section 5 checks the things that cut across all three: roles, sign-in, mobile
 layout, and the report form itself.
 
-**Your job:** perform each test on the deployed app, mark PASS or FAIL, and email a
-report for anything that fails. Do not try to fix anything.
+**Your job:** perform each test on the deployed app and mark PASS or FAIL. Do not
+try to fix anything.
 
 ```mermaid
 flowchart TB
@@ -39,7 +40,7 @@ flowchart TB
   A --> P3["Problem 3"]
   P3 --> S4["Section 4<br/>Interview scheduler"]
   A --> X["Section 5<br/>Roles, security, mobile, reporting"]
-  S1 --> R["Record results<br/>+ email failures"]
+  S1 --> R["Record results"]
   S2 --> R
   S3 --> R
   S4 --> R
@@ -50,10 +51,25 @@ flowchart TB
 
 ## 2. Before you start
 
+**Host handover — provided for this run**
+
+| What | Value |
+|---|---|
+| Instance | `http://localhost:8000` |
+| Test window | From 27 Nov 2026, IST |
+| Accounts | The eight demo accounts below; password `demo1234` |
+| Mail inbox | `http://localhost:8025` (Docker demo) or **Interviews → Sent emails** |
+| Sample upload | `http://localhost:8000/static/samples/Tester_Sample_SOP.pdf` |
+| AI | `qwen2.5:3b` on local Ollama; first answer 10–60 s |
+| Calendar | Google Calendar connected; press **Reconnect** if it shows disconnected |
+| Host contact | `trex2004avradeep@gmail.com` |
+| Data | Synthetic demo data only — never upload real personal data |
+| Browser | Current Edge or Chrome; one normal + one private window |
+
 ### 2.1 Accounts
 
 The demo database ships with these accounts. Password for all: **`demo1234`**.
-If your organiser gave you different credentials, use those and ignore this table.
+These are the credentials for this instance.
 
 | Login | Name | Role | Use it for |
 |---|---|---|---|
@@ -76,7 +92,7 @@ If your organiser gave you different credentials, use those and ignore this tabl
 - Keep one extra private window for the double-booking test.
 - Have a PDF or DOCX on your machine for the upload tests. If you do not have one,
   download the ready-made sample:
-  `BASE_URL/static/samples/Tester_Sample_SOP.pdf`
+  `http://localhost:8000/static/samples/Tester_Sample_SOP.pdf`
 - Find the mail inbox:
   - Docker demo: `http://localhost:8025` (Mailpit, all mail is caught here).
   - Hosted instance: sign in as `hr1` or `admin` → **Interviews** → **Sent emails**.
@@ -104,80 +120,6 @@ downloading), refresh, then report it.
 
 ---
 
-## 3. How to grade and report
-
-### 3.1 Result codes
-
-| Code | Meaning |
-|---|---|
-| **PASS** | Every expected bullet happened |
-| **FAIL** | At least one expected bullet did not happen |
-| **BLOCKED** | You could not run the test (missing account, no file, AI still downloading) |
-| **N/A** | The feature is deliberately not configured on this instance (for example Google Calendar) |
-
-### 3.2 Severity
-
-| Severity | Use it when |
-|---|---|
-| **S1 Blocker** | You cannot sign in, the app is down, data is lost, or a role sees data it must not see |
-| **S2 Major** | A main flow gives a wrong result: booking double-books, an answer invents steps, search misses a scan |
-| **S3 Minor** | The flow works but something is wrong or confusing; a workaround exists |
-| **S4 Cosmetic** | Wording, spacing, colour, a typo |
-
-### 3.3 How to report (preferred: in the app)
-
-1. Open the account menu (your name, bottom of the left rail).
-2. Choose **Report a problem**.
-3. Fill Area, Severity, a short summary, steps, expected and actual. The page is
-   attached automatically.
-4. Press **Send report**. You should see *“Report sent to the test team.”*
-
-The report is emailed to the address configured in `TEST_REPORT_EMAIL` (the local
-demo uses `trex2004avradeep@gmail.com`). If mail is not configured, the report is
-still kept in **Interviews → Sent emails**.
-
-### 3.4 Fallback: email directly
-
-Send to **`trex2004avradeep@gmail.com`**.
-
-**Subject**
-
-```
-[LeadDesk][T3.4][FAIL] Search shows another department's document
-```
-
-**Body**
-
-```
-Instance: https://...
-Account: hr1
-Browser / OS: Chrome 131 / Windows 11
-Time (IST): 27 Nov 2026, 15:42
-AI badge: online / offline
-Test: T3.4
-
-Steps
-1.
-2.
-
-Expected
--
-
-Actual
--
-
-Evidence: screenshot attached (and console errors if any)
-```
-
-Attach one screenshot of the expected state and one of the actual state. For email
-tests, screenshot the mail. Never include passwords or real document contents.
-
-### 3.5 The one rule
-
-**One test = one report.** If three tests fail, send three reports. It makes triage
-possible and stops fixes from getting lost inside a long email.
-
----
 
 ## Section 0 — Access, AI and mail (run these first)
 
@@ -192,7 +134,7 @@ possible and stops fixes from getting lost inside a long email.
 
 ```mermaid
 flowchart LR
-  A["Open BASE_URL"] --> B["Sign in as lead"]
+  A["Open http://localhost:8000"] --> B["Sign in as lead"]
   B --> C["Overview"]
   C --> D["Sign out, sign in as m01"]
   D --> E["My tasks"]
@@ -236,7 +178,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  A["Open BASE_URL"] --> B["Look at the top bar"]
+  A["Open http://localhost:8000"] --> B["Look at the top bar"]
   B --> C{"Badge says Local AI online?"}
   C -->|yes| D["Ask the 402 question"]
   D --> E{"Answer footer says Written by the local AI?"}
@@ -290,8 +232,8 @@ flowchart LR
 1. Sign in as `hr1` (or `admin`).
 2. Open **Interviews** → **Sent emails**.
 3. Open any message and read the body.
-4. If your organiser gave you a Mailpit URL (`http://localhost:8025` on the local
-   Docker demo), open it and confirm the same messages are there.
+4. If the host runs the Docker demo, open `http://localhost:8025` and confirm the
+   same messages are there. On a hosted instance, use **Sent emails**.
 
 **Expect**
 
@@ -300,7 +242,7 @@ flowchart LR
 - In Mailpit, the same messages appear.
 
 **Catch:** no messages at all, or every message says “outbox only” when your
-organiser said SMTP is configured.
+host said SMTP is configured.
 
 ---
 
@@ -760,7 +702,7 @@ flowchart LR
 
 **Do**
 
-1. Download `BASE_URL/static/samples/Tester_Sample_SOP.pdf`.
+1. Download `http://localhost:8000/static/samples/Tester_Sample_SOP.pdf`.
 2. As `lead`, open **SOP library**.
 3. Choose the file → **Upload and index**. Wait for the success message and the
    section count.
@@ -1503,7 +1445,7 @@ flowchart LR
 
 1. Sign in as `lead`, then sign out.
 2. Press the browser Back button.
-3. Open `BASE_URL/#/audit` directly.
+3. Open `http://localhost:8000/#/audit` directly.
 
 **Expect**
 
@@ -1598,7 +1540,7 @@ flowchart LR
 
 **Catch:** the form errors, nothing is stored, or the body is missing fields.
 
-**This report is a test — tell the organiser it was a drill.**
+**This report is a test — tell the host it was a drill.**
 
 ---
 
@@ -1644,62 +1586,8 @@ never returns.
 
 ---
 
-## 6. Results sheet
 
-Copy this into a spreadsheet, or use `docs/tester-results.csv`.
-
-| Test | Result | Severity | Notes | Report sent |
-|---|---|---|---|---|
-| T0.1 |  |  |  |  |
-| T0.2 |  |  |  |  |
-| T0.3 |  |  |  |  |
-| T1.1 |  |  |  |  |
-| T1.2 |  |  |  |  |
-| T1.3 |  |  |  |  |
-| T1.4 |  |  |  |  |
-| T1.5 |  |  |  |  |
-| T1.6 |  |  |  |  |
-| T2.1 |  |  |  |  |
-| T2.2 |  |  |  |  |
-| T2.3 |  |  |  |  |
-| T2.4 |  |  |  |  |
-| T2.5 |  |  |  |  |
-| T2.6 |  |  |  |  |
-| T3.1 |  |  |  |  |
-| T3.2 |  |  |  |  |
-| T3.3 |  |  |  |  |
-| T3.4 |  |  |  |  |
-| T3.5 |  |  |  |  |
-| T3.6 |  |  |  |  |
-| T4.1 |  |  |  |  |
-| T4.2 |  |  |  |  |
-| T4.3 |  |  |  |  |
-| T4.4 |  |  |  |  |
-| T4.5 |  |  |  |  |
-| T4.6 |  |  |  |  |
-| T5.1 |  |  |  |  |
-| T5.2 |  |  |  |  |
-| T5.3 |  |  |  |  |
-| T5.4 |  |  |  |  |
-| T5.5 |  |  |  |  |
-| T5.6 |  |  |  |  |
-
----
-
-## 7. Sign-off
-
-The build is ready to show when:
-
-- [ ] All **T0** tests pass, including **AI online**.
-- [ ] Every **P1** test (T1.x, T2.x) passes, or the failure is S3/S4 and accepted.
-- [ ] Every **P2** test (T3.x) passes, with **no S1 scope leak**.
-- [ ] Every **P3** test (T4.x) passes, including **exactly one booking** in T4.3.
-- [ ] No open **S1** or **S2** report.
-- [ ] Every failure has a report with a screenshot.
-
----
-
-## 8. Known limits — do not report these as bugs
+## 6. Known limits — do not report these as bugs
 
 | Behaviour | Why it is expected |
 |---|---|
@@ -1748,23 +1636,8 @@ Mailpit catches them; they do not need to be real.
 
 ### Sample SOP for upload
 
-`BASE_URL/static/samples/Tester_Sample_SOP.pdf` — a one-page fictional procedure
+`http://localhost:8000/static/samples/Tester_Sample_SOP.pdf` — a one-page fictional procedure
 with the code **TST-99**.
 
 ---
 
-## Appendix B — What a good failure report contains
-
-```mermaid
-flowchart LR
-  A["Test ID"] --> B["Account + instance"]
-  B --> C["Time, browser, AI badge"]
-  C --> D["Steps to reproduce"]
-  D --> E["Expected vs actual"]
-  E --> F["Screenshot + console"]
-  F --> G["Severity"]
-```
-
-A report is actionable when the reader can repeat it without asking you a question.
-“It didn't work” is not actionable; “T4.3: both private windows confirmed the same
-09:45 slot; board shows two bookings” is.
