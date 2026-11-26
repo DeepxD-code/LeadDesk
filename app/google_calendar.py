@@ -22,8 +22,9 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 API_URL = "https://www.googleapis.com/calendar/v3"
 REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 SCOPES = (
-    "https://www.googleapis.com/auth/calendar.events.owned "
-    "https://www.googleapis.com/auth/calendar.freebusy"
+    "https://www.googleapis.com/auth/calendar.events "
+    "https://www.googleapis.com/auth/calendar.freebusy "
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
 )
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -300,33 +301,103 @@ def busy_intervals(user_id, start, end):
         raise GoogleCalendarError("Google Calendar returned invalid availability data.") from exc
 
 
-def create_meeting(user_id, summary, start, end, *, description="", location="", attendees=None):
-    """Create a single event on the interviewer's primary calendar.
-
-    Returns the Google event id and link. Demo connections report success without
-    calling Google so the local demo keeps working offline.
-    """
-    if not has_connection(user_id):
-        raise GoogleCalendarError("Connect Google Calendar before creating a meeting.")
+def _is_demo_connection(user_id):
     connection = q1("SELECT * FROM google_calendar_connections WHERE user_id=?", (user_id,))
-    if connection and _decode_tokens(connection).get("demo"):
-        return {"ok": True, "demo": True, "id": None, "htmlLink": None}
+    return bool(connection and _decode_tokens(connection).get("demo"))
+
+
+def list_calendars(user_id):
+    """Writable calendars for the account, primary first. Used by the meeting form."""
+    if not has_connection(user_id):
+        raise GoogleCalendarError("Connect Google Calendar first.")
+    if _is_demo_connection(user_id):
+        return [{"id": "primary", "summary": "Primary calendar (demo)", "primary": True, "access_role": "owner"}]
+    data = _api_request(user_id, "GET", "/users/me/calendarList",
+                        params={"minAccessRole": "writer", "maxResults": 100})
+    calendars = []
+    for item in data.get("items", []):
+        if item.get("id") and item.get("accessRole") in ("owner", "writer"):
+            calendars.append({"id": item["id"], "summary": item.get("summary") or item["id"],
+                              "primary": bool(item.get("primary")), "access_role": item.get("accessRole")})
+    calendars.sort(key=lambda c: (not c["primary"], c["summary"].lower()))
+    return calendars
+
+
+def _meeting_payload(summary, start, end, description, location, attendees, meet):
     payload = {
         "summary": summary,
         "start": {"dateTime": _rfc3339(start), "timeZone": "Asia/Kolkata"},
         "end": {"dateTime": _rfc3339(end), "timeZone": "Asia/Kolkata"},
+        "description": description or "",
+        "location": location or "",
     }
-    if description:
-        payload["description"] = description
-    if location:
-        payload["location"] = location
     emails = attendees or []
     if emails:
         payload["attendees"] = [{"email": email} for email in emails]
-    data = _api_request(user_id, "POST", "/calendars/primary/events",
-                        params={"sendUpdates": "all" if emails else "none"}, payload=payload)
+    if meet:
+        payload["conferenceData"] = {"createRequest": {
+            "requestId": secrets.token_hex(12),
+            "conferenceSolutionKey": {"type": "hangoutsMeet"},
+        }}
+    return payload, emails
+
+
+def create_meeting(user_id, summary, start, end, *, description="", location="", attendees=None,
+                   calendar_id="primary", meet=False):
+    """Create a single event on a writable calendar.
+
+    Returns the Google event id, link and Meet link. Demo connections report success
+    without calling Google so the local demo keeps working offline.
+    """
+    if not has_connection(user_id):
+        raise GoogleCalendarError("Connect Google Calendar before creating a meeting.")
+    if _is_demo_connection(user_id):
+        return {"ok": True, "demo": True, "id": None, "htmlLink": None, "meet_link": None}
+    payload, emails = _meeting_payload(summary, start, end, description, location, attendees, meet)
+    params = {"sendUpdates": "all" if emails else "none"}
+    if meet:
+        params["conferenceDataVersion"] = 1
+    data = _api_request(user_id, "POST", f"/calendars/{quote(calendar_id, safe='')}/events",
+                        params=params, payload=payload)
     return {"ok": True, "demo": False, "id": data.get("id"), "htmlLink": data.get("htmlLink"),
+            "meet_link": data.get("hangoutLink"), "calendar_id": calendar_id,
             "start": start, "end": end, "attendees": emails}
+
+
+def update_meeting(user_id, calendar_id, event_id, summary, start, end, *, description="", location="",
+                   attendees=None, meet=False):
+    """Edit a meeting created from LeadDesk, keeping its Google event id."""
+    if not has_connection(user_id):
+        raise GoogleCalendarError("Connect Google Calendar before editing a meeting.")
+    if _is_demo_connection(user_id):
+        return {"ok": True, "demo": True, "id": event_id, "htmlLink": None, "meet_link": None}
+    if not event_id:
+        raise GoogleCalendarError("Reconnect Google Calendar before editing this meeting.")
+    payload, emails = _meeting_payload(summary, start, end, description, location, attendees, meet)
+    params = {"sendUpdates": "all" if emails else "none"}
+    if meet:
+        params["conferenceDataVersion"] = 1
+    data = _api_request(user_id, "PATCH",
+                        f"/calendars/{quote(calendar_id, safe='')}/events/{quote(event_id, safe='')}",
+                        params=params, payload=payload)
+    return {"ok": True, "demo": False, "id": data.get("id"), "htmlLink": data.get("htmlLink"),
+            "meet_link": data.get("hangoutLink"), "calendar_id": calendar_id}
+
+
+def delete_meeting(user_id, calendar_id, event_id):
+    """Cancel a meeting created from LeadDesk (404/410 count as already gone)."""
+    if not has_connection(user_id):
+        raise GoogleCalendarError("Connect Google Calendar before cancelling a meeting.")
+    if _is_demo_connection(user_id) or not event_id:
+        return {"ok": True, "demo": True}
+    try:
+        _api_request(user_id, "DELETE",
+                     f"/calendars/{quote(calendar_id, safe='')}/events/{quote(event_id, safe='')}",
+                     params={"sendUpdates": "all"})
+    except GoogleCalendarError as exc:
+        if exc.status_code not in (404, 410):
+            raise
+    return {"ok": True, "demo": False}
 
 
 def _event_payload(interview):

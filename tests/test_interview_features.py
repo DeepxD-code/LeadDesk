@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
@@ -166,3 +167,73 @@ def test_creating_a_meeting_sends_one_google_event(interviewer, monkeypatch):
     assert seen["attendees"] == ["a@example.com"]
     assert seen["location"] == "Room 2"
     assert seen["user_id"] == user_id
+
+def test_meeting_create_list_edit_cancel_round_trip(interviewer, monkeypatch):
+    user_id = db.q1("SELECT id FROM users WHERE username='int1'")["id"]
+    monkeypatch.setattr(google_calendar, "has_connection", lambda _uid: True)
+    calls = []
+
+    def fake_create(user_id_, summary, start, end, **kwargs):
+        calls.append(("create", kwargs))
+        return {"ok": True, "demo": False, "id": "evt-9", "htmlLink": "https://c/9",
+                "meet_link": "https://meet/9"}
+
+    def fake_update(user_id_, calendar_id, event_id, summary, start, end, **kwargs):
+        calls.append(("update", calendar_id, event_id, kwargs))
+        return {"ok": True, "demo": False, "id": event_id, "htmlLink": "https://c/9", "meet_link": None}
+
+    def fake_delete(user_id_, calendar_id, event_id):
+        calls.append(("delete", calendar_id, event_id))
+        return {"ok": True, "demo": False}
+
+    monkeypatch.setattr(google_calendar, "create_meeting", fake_create)
+    monkeypatch.setattr(google_calendar, "update_meeting", fake_update)
+    monkeypatch.setattr(google_calendar, "delete_meeting", fake_delete)
+    body = {"summary": "Team sync", "start": "2026-12-01T10:00", "end": "2026-12-01T10:30",
+            "attendees": "a@example.com", "calendar_id": "team@example.com", "meet": True}
+    created = interviewer.post("/api/iv/google/meeting", json=body)
+    assert created.status_code == 200
+    meeting_id = created.json()["meeting_id"]
+    assert calls[0][1]["calendar_id"] == "team@example.com"
+    assert calls[0][1]["meet"] is True
+    row = db.q1("SELECT * FROM google_meetings WHERE id=?", (meeting_id,))
+    assert row["user_id"] == user_id
+    assert row["calendar_id"] == "team@example.com"
+    assert row["meet_link"] == "https://meet/9"
+    assert json.loads(row["attendees"]) == ["a@example.com"]
+
+    listed = interviewer.get("/api/iv/google/meetings").json()["meetings"]
+    assert any(m["id"] == meeting_id and m["summary"] == "Team sync" for m in listed)
+
+    edited = interviewer.patch(f"/api/iv/google/meeting/{meeting_id}", json=body)
+    assert edited.status_code == 200
+    assert calls[1][0] == "update"
+    assert calls[1][1] == "team@example.com"
+    assert calls[1][3]["meet"] is False          # an existing Meet link is not recreated
+    cancelled = interviewer.delete(f"/api/iv/google/meeting/{meeting_id}")
+    assert cancelled.status_code == 200
+    assert db.q1("SELECT status FROM google_meetings WHERE id=?", (meeting_id,))["status"] == "cancelled"
+    assert calls[2][0] == "delete"
+
+
+def test_meeting_is_private_to_its_creator(interviewer, interviewer2):
+    user_id = db.q1("SELECT id FROM users WHERE username='int1'")["id"]
+    ts = db.now_s()
+    meeting_id = db.ex("""INSERT INTO google_meetings(user_id, calendar_id, event_id, summary, start, end,
+                          attendees, location, description, meet_link, html_link, status, created_at, updated_at)
+                          VALUES (?, 'primary', 'evt-private', 'Private', '2026-12-02T10:00', '2026-12-02T10:30',
+                                  '[]', '', '', NULL, NULL, 'active', ?, ?)""", (user_id, ts, ts))
+    try:
+        body = {"summary": "Hijack", "start": "2026-12-02T10:00", "end": "2026-12-02T10:30"}
+        assert interviewer2.patch(f"/api/iv/google/meeting/{meeting_id}", json=body).status_code == 404
+        assert interviewer2.delete(f"/api/iv/google/meeting/{meeting_id}").status_code == 404
+    finally:
+        db.ex("DELETE FROM google_meetings WHERE id=?", (meeting_id,))
+
+
+def test_calendars_endpoint_requires_a_connection(interviewer):
+    user_id = db.q1("SELECT id FROM users WHERE username='int1'")["id"]
+    db.ex("DELETE FROM google_calendar_connections WHERE user_id=?", (user_id,))
+    response = interviewer.get("/api/iv/google/calendars")
+    assert response.status_code == 400
+    assert "Connect Google Calendar" in response.json()["detail"]

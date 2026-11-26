@@ -1,5 +1,6 @@
 """Interview scheduler: availability, self-service booking links, .ics invites, reminders, structured feedback."""
 import io
+import json
 import os
 import re
 import secrets
@@ -164,6 +165,8 @@ class MeetingIn(BaseModel):
     attendees: str = ""           # comma/space separated emails
     description: str = Field("", max_length=2000)
     location: str = Field("", max_length=300)
+    calendar_id: str = Field("primary", max_length=300)
+    meet: bool = False            # ask Google to attach a Meet link
 
 
 @router.get("/slots")
@@ -226,9 +229,8 @@ def google_disconnect(user=Depends(require("interviewer"))):
         raise HTTPException(502, str(exc)) from exc
 
 
-@router.post("/google/meeting")
-def google_create_meeting(body: MeetingIn, user=Depends(require("interviewer"))):
-    """Create a one-off meeting on the signed-in interviewer's Google Calendar."""
+def _meeting_fields(body: MeetingIn):
+    """Validate a meeting form once, for both create and edit."""
     summary = body.summary.strip()
     if not summary:
         raise HTTPException(400, "Give the meeting a title")
@@ -241,8 +243,6 @@ def google_create_meeting(body: MeetingIn, user=Depends(require("interviewer")))
         raise HTTPException(400, "End time must be after start time")
     if end - start > timedelta(hours=12):
         raise HTTPException(400, "A single meeting cannot be longer than 12 hours")
-    if not google_calendar.has_connection(user["id"]):
-        raise HTTPException(400, "Connect Google Calendar before creating a meeting")
     emails = []
     for raw in re.split(r"[\s,;]+", body.attendees.strip()):
         if not raw:
@@ -254,13 +254,104 @@ def google_create_meeting(body: MeetingIn, user=Depends(require("interviewer")))
             emails.append(email)
     if len(emails) > 20:
         raise HTTPException(400, "Add at most 20 attendees")
+    calendar_id = body.calendar_id.strip() or "primary"
+    if not calendar_id or re.search(r"\s", calendar_id):
+        raise HTTPException(400, "Choose a valid calendar")
+    return summary, emails, calendar_id
+
+
+def _meeting_public(row):
+    meeting = dict(row)
     try:
-        return google_calendar.create_meeting(
+        meeting["attendees"] = json.loads(meeting.get("attendees") or "[]")
+    except (TypeError, ValueError):
+        meeting["attendees"] = []
+    return meeting
+
+
+@router.get("/google/calendars")
+def google_calendars(user=Depends(require("interviewer"))):
+    if not google_calendar.has_connection(user["id"]):
+        raise HTTPException(400, "Connect Google Calendar first")
+    try:
+        return {"calendars": google_calendar.list_calendars(user["id"])}
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@router.get("/google/meetings")
+def google_meetings(user=Depends(require("interviewer"))):
+    """Upcoming meetings created from LeadDesk, newest first."""
+    rows = q("""SELECT * FROM google_meetings
+                WHERE user_id=? AND status='active' AND end >= ?
+                ORDER BY start LIMIT 50""",
+             (user["id"], now().strftime("%Y-%m-%dT%H:%M")))
+    return {"meetings": [_meeting_public(row) for row in rows]}
+
+
+@router.post("/google/meeting")
+def google_create_meeting(body: MeetingIn, user=Depends(require("interviewer"))):
+    """Create a one-off meeting on a writable Google Calendar."""
+    summary, emails, calendar_id = _meeting_fields(body)
+    if not google_calendar.has_connection(user["id"]):
+        raise HTTPException(400, "Connect Google Calendar before creating a meeting")
+    try:
+        result = google_calendar.create_meeting(
             user["id"], summary, body.start, body.end,
             description=body.description.strip(), location=body.location.strip(), attendees=emails,
+            calendar_id=calendar_id, meet=body.meet,
         )
     except google_calendar.GoogleCalendarError as exc:
         raise HTTPException(502, str(exc)) from exc
+    ts = now_s()
+    meeting_id = ex("""INSERT INTO google_meetings(user_id, calendar_id, event_id, summary, start, end,
+                       attendees, location, description, meet_link, html_link, status, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'active', ?, ?)""",
+                    (user["id"], calendar_id, result.get("id"), summary, body.start, body.end,
+                     json.dumps(emails), body.location.strip(), body.description.strip(),
+                     result.get("meet_link"), result.get("htmlLink"), ts, ts))
+    return {**result, "meeting_id": meeting_id, "attendees": emails}
+
+
+@router.patch("/google/meeting/{meeting_id}")
+def google_update_meeting(meeting_id: int, body: MeetingIn, user=Depends(require("interviewer"))):
+    """Edit a meeting created from LeadDesk. The event stays on its original calendar."""
+    row = q1("SELECT * FROM google_meetings WHERE id=? AND user_id=?", (meeting_id, user["id"]))
+    if not row:
+        raise HTTPException(404, "Meeting not found")
+    if row["status"] != "active":
+        raise HTTPException(400, "This meeting was already cancelled")
+    summary, emails, _ = _meeting_fields(body)
+    if not google_calendar.has_connection(user["id"]):
+        raise HTTPException(400, "Connect Google Calendar before editing a meeting")
+    try:
+        result = google_calendar.update_meeting(
+            user["id"], row["calendar_id"], row["event_id"], summary, body.start, body.end,
+            description=body.description.strip(), location=body.location.strip(), attendees=emails,
+            meet=body.meet and not row["meet_link"],
+        )
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    ex("""UPDATE google_meetings SET summary=?, start=?, end=?, attendees=?, location=?, description=?,
+          meet_link=COALESCE(?, meet_link), html_link=COALESCE(?, html_link), updated_at=? WHERE id=?""",
+       (summary, body.start, body.end, json.dumps(emails), body.location.strip(), body.description.strip(),
+        result.get("meet_link"), result.get("htmlLink"), now_s(), meeting_id))
+    return {**result, "meeting_id": meeting_id, "attendees": emails}
+
+
+@router.delete("/google/meeting/{meeting_id}")
+def google_cancel_meeting(meeting_id: int, user=Depends(require("interviewer"))):
+    row = q1("SELECT * FROM google_meetings WHERE id=? AND user_id=?", (meeting_id, user["id"]))
+    if not row:
+        raise HTTPException(404, "Meeting not found")
+    if row["status"] != "active":
+        return {"ok": True, "already": True}
+    try:
+        result = google_calendar.delete_meeting(user["id"], row["calendar_id"], row["event_id"])
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    ex("UPDATE google_meetings SET status='cancelled', updated_at=? WHERE id=?", (now_s(), meeting_id))
+    return {**result, "ok": True}
 
 
 @router.post("/slots")

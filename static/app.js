@@ -1795,6 +1795,12 @@ VIEWS.availability = async (el) => {
   const byDay = {};
   r.slots.forEach((s) => (byDay[s.start.slice(0, 10)] ||= []).push(s));
   const calendar = r.google_calendar;
+  let meetings = [];
+  let calendars = [{ id: "primary", summary: "Primary calendar", primary: true }];
+  if (calendar && calendar.connected) {
+    try { meetings = (await api("/api/iv/google/meetings")).meetings || []; } catch (_) { meetings = []; }
+    try { const cc = await api("/api/iv/google/calendars"); if (cc.calendars && cc.calendars.length) calendars = cc.calendars; } catch (_) { /* reconnect to grant calendar list */ }
+  }
   el.innerHTML = html`
   <div class="page-head"><div class="grow"><h1>My availability</h1><p>Add the times you can interview. Candidates only see open times. Times in ${r.time_zone}.</p></div></div>
   ${window.LEADDESK_PREVIEW_MODE ? "" : html`<section class="card" aria-labelledby="google-calendar-title" style="margin-bottom:16px">
@@ -1803,19 +1809,32 @@ VIEWS.availability = async (el) => {
     </div>
     ${calendar && calendar.connected
       ? html`<p class="small">Connected to ${calendar.calendar_label || "your primary calendar"}. Busy times are checked before candidates see slots, and confirmed interviews are synced here.</p>
-        <div class="row"><button class="btn sm primary" id="new-meeting">+ New meeting</button><span class="grow"></span><button class="btn sm" id="google-disconnect">Disconnect calendar</button></div>
+        <div class="row"><button class="btn sm primary" id="new-meeting">+ New meeting</button><span class="grow"></span><a class="btn sm" href="/api/iv/google/connect" title="Grant the new calendar-list permission">Reconnect</a><button class="btn sm" id="google-disconnect">Disconnect calendar</button></div>
         <form id="mf" class="stack" hidden style="margin-top:12px">
           <div class="form-grid">
             <label class="f">Title <input class="input" name="summary" required maxlength="200" placeholder="e.g. Ops sync"></label>
             <label class="f">Date <input class="input" type="date" name="day" required value="${dateInput(tom)}"></label>
             <label class="f">From <input class="input" type="time" name="start_time" required value="15:00"></label>
             <label class="f">To <input class="input" type="time" name="end_time" required value="15:30"></label>
+            <label class="f">Calendar <select class="input" name="calendar_id">${calendars.map((c) => html`<option value="${c.id}" ${c.primary ? "selected" : ""}>${c.summary}${c.primary ? " (primary)" : ""}</option>`)}</select></label>
+            <label class="f" style="justify-content:flex-end;padding-bottom:7px"><span style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="meet" checked> Add Google Meet link</span></label>
             <label class="f">Attendees (optional, emails) <input class="input" name="attendees" placeholder="name@example.com, other@example.com"></label>
-            <label class="f">Location <input class="input" name="location" placeholder="Google Meet, room, or blank"></label>
+            <label class="f">Location <input class="input" name="location" placeholder="Meet link is added automatically, or a room"></label>
           </div>
           <label class="f">Notes <textarea class="input" name="description" rows="2" maxlength="2000"></textarea></label>
-          <div class="row"><span class="grow"></span><button class="btn sm primary" id="mcreate">Create in Google Calendar</button></div>
+          <div class="row"><button type="button" class="btn sm" id="mreset" hidden>Cancel edit</button><span class="grow"></span><button class="btn sm primary" id="mcreate">Create in Google Calendar</button></div>
         </form>
+        ${meetings.length ? html`<div style="margin-top:16px">
+          <h3 style="font-size:14px;margin:0 0 6px">Upcoming meetings created here</h3>
+          <div class="stack">${meetings.map((m) => html`<div class="row" style="border-top:1px solid var(--line);padding:8px 0;gap:10px">
+            <div class="grow"><b>${m.summary}</b>
+              <div class="small muted">${fmtDT(m.start)} – ${fmtTime(parseLocal(m.end))} · ${m.calendar_id === "primary" ? "Primary calendar" : m.calendar_id}${m.attendees.length ? " · " + m.attendees.length + " guest" + (m.attendees.length > 1 ? "s" : "") : ""}</div>
+              <div class="small">${m.meet_link ? html`<a href="${m.meet_link}" target="_blank" rel="noopener">Google Meet</a> · ` : ""}${m.html_link ? html`<a href="${m.html_link}" target="_blank" rel="noopener">Open in Calendar</a>` : ""}</div>
+            </div>
+            <button class="btn sm" data-edit="${m.id}">Edit</button>
+            <button class="btn sm" data-cancel="${m.id}">Cancel</button>
+          </div>`)}</div>
+        </div>` : ""}
         <div id="mresult" class="small"></div>`
       : calendar && calendar.configured
         ? html`<p class="small">Connect your own calendar to hide busy times and sync interview invitations, changes, and cancellations.</p>
@@ -1853,33 +1872,80 @@ VIEWS.availability = async (el) => {
   };
   const newMeeting = $("#new-meeting", el);
   const meetingForm = $("#mf", el);
+  const mcreate = $("#mcreate", el);
+  const mreset = $("#mreset", el);
+  let editingId = null;
+  const resetMeetingForm = () => {
+    editingId = null;
+    if (!meetingForm) return;
+    meetingForm.reset();
+    if (mreset) mreset.hidden = true;
+    if (mcreate) mcreate.textContent = "Create in Google Calendar";
+    const cal = meetingForm.elements["calendar_id"];
+    if (cal) cal.disabled = false;
+  };
   if (newMeeting && meetingForm) {
     newMeeting.onclick = () => {
-      meetingForm.hidden = !meetingForm.hidden;
-      if (!meetingForm.hidden) meetingForm.querySelector('[name="summary"]').focus();
+      if (!meetingForm.hidden) { resetMeetingForm(); meetingForm.hidden = true; return; }
+      resetMeetingForm();
+      meetingForm.hidden = false;
+      meetingForm.querySelector('[name="summary"]').focus();
     };
+    if (mreset) mreset.onclick = resetMeetingForm;
     meetingForm.onsubmit = async (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
-      const btn = $("#mcreate", el);
-      btn.disabled = true;
+      const payload = {
+        summary: f.summary,
+        start: `${f.day}T${f.start_time}`,
+        end: `${f.day}T${f.end_time}`,
+        attendees: f.attendees || "",
+        description: f.description || "",
+        location: f.location || "",
+        calendar_id: f.calendar_id || "primary",
+        meet: f.meet === "on",
+      };
+      mcreate.disabled = true;
       try {
-        const r = await api("/api/iv/google/meeting", { method: "POST", body: {
-          summary: f.summary,
-          start: `${f.day}T${f.start_time}`,
-          end: `${f.day}T${f.end_time}`,
-          attendees: f.attendees || "",
-          description: f.description || "",
-          location: f.location || "",
-        } });
-        toast(r.demo ? "Demo calendar: meeting not sent to Google" : "Meeting created on Google Calendar", "ok");
-        const box = $("#mresult", el);
-        box.innerHTML = r.htmlLink ? html`<a href="${r.htmlLink}" target="_blank" rel="noopener">Open in Google Calendar →</a>`.s : "";
-        e.target.reset();
+        const r = editingId
+          ? await api(`/api/iv/google/meeting/${editingId}`, { method: "PATCH", body: payload })
+          : await api("/api/iv/google/meeting", { method: "POST", body: payload });
+        toast(r.demo ? "Demo calendar: saved locally only" : editingId ? "Meeting updated" : "Meeting created on Google Calendar", "ok");
+        route();
+        return;
       } catch (er) { fail(er); }
-      btn.disabled = false;
+      mcreate.disabled = false;
     };
   }
+  $$("[data-edit]", el).forEach((b) => (b.onclick = () => {
+    const m = meetings.find((x) => String(x.id) === b.dataset.edit);
+    if (!m || !meetingForm) return;
+    editingId = m.id;
+    meetingForm.hidden = false;
+    const f = meetingForm.elements;
+    f["summary"].value = m.summary;
+    f["day"].value = m.start.slice(0, 10);
+    f["start_time"].value = m.start.slice(11, 16);
+    f["end_time"].value = m.end.slice(11, 16);
+    f["attendees"].value = (m.attendees || []).join(", ");
+    f["location"].value = m.location || "";
+    f["description"].value = m.description || "";
+    f["calendar_id"].value = m.calendar_id;
+    f["calendar_id"].disabled = true;   // an event cannot move calendars on edit
+    f["meet"].checked = !!m.meet_link;
+    mcreate.textContent = "Save changes";
+    mreset.hidden = false;
+    meetingForm.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }));
+  $$("[data-cancel]", el).forEach((b) => (b.onclick = async () => {
+    if (!confirm("Cancel this meeting in Google Calendar?")) return;
+    b.disabled = true;
+    try {
+      await api(`/api/iv/google/meeting/${b.dataset.cancel}`, { method: "DELETE" });
+      toast("Meeting cancelled", "ok");
+      route();
+    } catch (er) { b.disabled = false; fail(er); }
+  }));
 };
 
 // ------------------------------------------------------------------ proof

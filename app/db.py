@@ -294,6 +294,26 @@ CREATE TABLE IF NOT EXISTS google_calendar_connections (
   token_blob BLOB NOT NULL,
   updated_at TEXT NOT NULL
 );
+-- Meetings created from LeadDesk (not interview bookings). Kept locally so they
+-- can be listed, edited and cancelled from the same screen that created them.
+CREATE TABLE IF NOT EXISTS google_meetings (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  calendar_id TEXT NOT NULL DEFAULT 'primary',
+  event_id TEXT,
+  summary TEXT NOT NULL,
+  start TEXT NOT NULL,
+  end TEXT NOT NULL,
+  attendees TEXT,
+  location TEXT,
+  description TEXT,
+  meet_link TEXT,
+  html_link TEXT,
+  status TEXT NOT NULL DEFAULT 'active',   -- active | cancelled
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_google_meetings_user_start ON google_meetings(user_id, start);
 CREATE TABLE IF NOT EXISTS interview_calendar_sync (
   interview_id INTEGER PRIMARY KEY REFERENCES interviews(id) ON DELETE CASCADE,
   calendar_user_id INTEGER REFERENCES users(id),
