@@ -268,6 +268,48 @@ function changePasswordDialog() {
   };
 }
 
+// ------------------------------------------------------------------ tester report
+function reportDialog() {
+  const map = { overview: "Dashboard", board: "Task board", assistant: "SOP assistant", vault: "Vault", interviews: "Interviews" };
+  const here = (location.hash || "").replace("#/", "").split("?")[0];
+  const area = map[here] || "Other";
+  const ov = modal(html`<div class="modal-head"><h2>Report a problem</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+    <p class="muted small">This emails the test team with your account and this page. Please do not paste passwords or document contents.</p>
+    <form id="report-form" class="stack">
+      <div class="row">
+        <label class="f grow">Area
+          <select class="input" name="area">${["Dashboard", "Task board", "SOP assistant", "Vault", "Interviews", "Sign-in", "Other"].map((a) => html`<option ${a === area ? raw("selected") : ""}>${a}</option>`)}</select>
+        </label>
+        <label class="f grow">Severity
+          <select class="input" name="severity">
+            <option value="blocker">Blocker - cannot use the product</option>
+            <option value="major" selected>Major - wrong result, no workaround</option>
+            <option value="minor">Minor - workaround exists</option>
+            <option value="cosmetic">Cosmetic - looks wrong</option>
+          </select>
+        </label>
+      </div>
+      <label class="f">Short summary <input class="input" name="summary" maxlength="160" minlength="5" required placeholder="e.g. Booking link shows a slot that is already taken"></label>
+      <label class="f">Steps to reproduce <textarea class="input" name="steps" rows="4" minlength="5" required placeholder="1. Sign in as ...&#10;2. Open ...&#10;3. Click ..."></textarea></label>
+      <div class="row">
+        <label class="f grow">Expected <textarea class="input" name="expected" rows="2" placeholder="What should have happened"></textarea></label>
+        <label class="f grow">Actual <textarea class="input" name="actual" rows="2" placeholder="What happened instead"></textarea></label>
+      </div>
+      <div class="row"><button class="btn primary" type="submit">Send report</button><button class="btn" type="button" data-close>Cancel</button></div>
+    </form>`);
+  ov.querySelector("#report-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    const b = e.target.querySelector("button[type=submit]");
+    b.disabled = true;
+    try {
+      await api("/api/report", { method: "POST", body: { ...f, page: location.href } });
+      closeModal();
+      toast("Report sent to the test team. Thank you.", "ok");
+    } catch (err) { fail(err); b.disabled = false; }
+  };
+}
+
 // ------------------------------------------------------------------ shell
 async function boot() {
   if (!S.me) {
@@ -436,6 +478,7 @@ function renderShell() {
     <div class="account-menu-user"><b>${me.name}</b><small>${me.role_label}</small></div>
     <button type="button" role="menuitem" id="account-details">Accounts</button>
     <button type="button" role="menuitem" id="password-action">Change password</button>
+    <button type="button" role="menuitem" id="report-action">Report a problem</button>
     <button type="button" role="menuitemcheckbox" aria-checked="${S.density === "compact"}" id="density-action">
       ${S.density === "compact" ? "Comfortable density" : "Compact density"}
     </button>
@@ -457,6 +500,11 @@ function renderShell() {
     accountMenu.classList.add("hidden");
     profile.setAttribute("aria-expanded", "false");
     changePasswordDialog();
+  };
+  $("#report-action").onclick = () => {
+    accountMenu.classList.add("hidden");
+    profile.setAttribute("aria-expanded", "false");
+    reportDialog();
   };
   const setDensity = () => {
     S.density = S.density === "compact" ? "comfortable" : "compact";
@@ -823,7 +871,7 @@ VIEWS.overview = async (el) => {
   const peopleNeedingHelp = w.members.filter((m) => m.needs_help).sort((a, b) => b.overdue - a.overdue || b.open - a.open);
   const helpers = peopleNeedingHelp.slice(0, 5);
   const maxOpen = Math.max(w.threshold + 2, ...w.members.map((m) => m.open));
-  const chartMembers = w.members.slice(0, 7);
+  const chartMembers = w.members.slice().sort((a, b) => b.open - a.open || b.overdue - a.overdue).slice(0, 7);
   const maxOverdue = Math.max(4, ...chartMembers.map((m) => m.overdue));
   const chartTicks = (max) => [max, Math.round(max * .75), Math.round(max * .5), Math.round(max * .25), 0];
   el.innerHTML = html`
@@ -1067,7 +1115,7 @@ function taskForm(task, done) {
         <label class="f">Assign to <select class="input" name="assignee_id"><option value="">- Not yet -</option>${M.members.map((m) => html`<option value="${m.id}" ${m.id === t.assignee_id ? raw("selected") : ""}>${m.name} (${m.shift})</option>`)}</select></label>
         <label class="f">Type <select class="input" name="task_type">${M.task_types.map((x) => html`<option ${x === t.task_type ? raw("selected") : ""}>${x}</option>`)}</select></label>
         <label class="f">Deadline (IST) <input class="input" type="datetime-local" name="deadline" required value="${t.deadline.slice(0, 16)}"></label>
-        <label class="f">Priority <select class="input" name="priority">${M.priorities.map((p) => html`<option value="${p}" ${p === t.priority ? raw("selected") : ""}>${p}</option>`)}</select></label>
+        <label class="f">Priority <select class="input" name="priority">${M.priorities.map((p) => html`<option value="${p}" ${p === t.priority ? raw("selected") : ""}>${p[0].toUpperCase() + p.slice(1)}</option>`)}</select></label>
         <label class="f">Status <select class="input" name="status">${M.statuses.map((s) => html`<option value="${s}" ${s === t.status ? raw("selected") : ""}>${STATUS[s][0]}</option>`)}</select></label>
       </div>
       <div id="loadhint" class="small"></div>
@@ -1113,7 +1161,7 @@ async function openTask(id, done) {
     <div><a href="/api/tasks/${id}/attachments/${a.id}" target="_blank" rel="noopener"><b>${a.filename}</b></a>
       <div class="muted tiny">${a.uploaded_by_name || "Unknown"} ? ${fmtDT(a.uploaded_at)} ? ${Math.max(1, Math.round((a.size||0)/1024))} KB</div></div>
     <span class="pill">${(a.filename.split(".").pop()||"file").toUpperCase()}</span></div>`;
-  const ov = modal(html`<div class="modal-head"><h2>${t.title}</h2><button class="x" data-close>?</button></div>
+  const ov = modal(html`<div class="modal-head"><h2>${t.title}</h2><button class="x" data-close>×</button></div>
     <div class="row" style="margin-bottom:12px">${statusPill(t.status)}${prioPill(t.priority)}<span class="pill">${t.task_type}</span>
       ${t.overdue ? html`<span class="pill bad">${rel(t.deadline)}</span>` : ""}</div>
     <div class="form-grid" style="margin-bottom:14px">
@@ -1138,7 +1186,7 @@ async function openTask(id, done) {
       <div class="muted small" style="margin-bottom:6px"><b>Evidence, explanation, and task notes</b></div>
       <textarea class="input" id="tasknote" rows="3" placeholder="Hey I did this and that. Here is the evidence. I'm uploading this and that."></textarea>
       <div class="row" style="margin-top:8px;gap:8px">
-        <button class="btn sm" type="button" id="dictateBtn">?? Dictate</button>
+        <button class="btn sm" type="button" id="dictateBtn">Dictate</button>
         <span class="grow"></span>
         <button class="btn sm" type="button" id="saveNoteBtn">Save note</button>
       </div>
@@ -1156,14 +1204,14 @@ async function openTask(id, done) {
     </div>
 
     <div class="row" style="margin-bottom:16px">
-      ${t.status !== "in_progress" && t.status !== "done" ? html`<button class="btn" data-st="in_progress">? Start</button>` : ""}
-      ${t.status !== "done" ? html`<button class="btn ok" data-st="done">? Mark done</button>` : html`<button class="btn" data-st="in_progress">? Reopen</button>`}
-      ${t.status !== "escalated" && t.status !== "done" ? html`<button class="btn warn" data-st="escalated">? Escalate</button>` : ""}
-      ${isLead ? html`<span class="grow"></span><button class="btn" id="edit">? Edit / reassign</button>` : ""}
+      ${t.status !== "in_progress" && t.status !== "done" ? html`<button class="btn" data-st="in_progress">Start</button>` : ""}
+      ${t.status !== "done" ? html`<button class="btn ok" data-st="done">Mark done</button>` : html`<button class="btn" data-st="in_progress">Reopen</button>`}
+      ${t.status !== "escalated" && t.status !== "done" ? html`<button class="btn warn" data-st="escalated">Escalate</button>` : ""}
+      ${isLead ? html`<span class="grow"></span><button class="btn" id="edit">Edit / reassign</button>` : ""}
     </div>
     <h3>History</h3>
     <ul class="timeline">${events.map((e) => html`<li><b>${e.actor_name || "System"}</b> ${describeEvent(e)}
-      <div class="muted tiny">${fmtDT(e.at)}</div>${e.note ? html`<div class="small" style="margin-top:3px">?${e.note}?</div>` : ""}</li>`)}</ul>`.s);
+      <div class="muted tiny">${fmtDT(e.at)}</div>${e.note ? html`<div class="small" style="margin-top:3px">“${e.note}”</div>` : ""}</li>`)}</ul>`.s);
 
   const refresh = () => { closeModal(); openTask(id, done); };
   $$("[data-st]", ov).forEach((b) => (b.onclick = async () => {
@@ -1206,7 +1254,7 @@ async function openTask(id, done) {
       rec.lang = "en-IN";
       rec.interimResults = true;
       rec.continuous = true;
-      dictateBtn.textContent = "? Stop";
+      dictateBtn.textContent = "Stop";
       dictateHint.textContent = "Listening...";
       let finalText = noteBox.value ? noteBox.value + " " : "";
       rec.onresult = (ev) => {
@@ -1219,7 +1267,7 @@ async function openTask(id, done) {
         noteBox.value = (finalText + interim).trim();
       };
       rec.onerror = () => { dictateHint.textContent = "Dictation error."; };
-      rec.onend = () => { rec = null; dictateBtn.textContent = "?? Dictate"; dictateHint.textContent = "Dictation stopped."; };
+      rec.onend = () => { rec = null; dictateBtn.textContent = "Dictate"; dictateHint.textContent = "Dictation stopped."; };
       rec.start();
     };
   }
@@ -1799,9 +1847,10 @@ function feedbackForm(iv) {
     <div class="stack">${crit.map(([k, l]) => html`<div class="row"><b style="width:170px">${l}</b><div class="stars" data-c="${k}">${[1, 2, 3, 4, 5].map((n) => html`<button type="button" data-n="${n}">${n}</button>`)}</div></div>`)}
       <div class="row"><b style="width:170px">Recommendation</b><div class="seg" id="rec"><button data-r="advance">✅ Advance</button><button data-r="hold">⏸ Hold</button><button data-r="reject">✖ Reject</button></div></div>
       <label class="f">Comments <textarea class="input" id="cm" rows="3" placeholder="What stood out? Any concerns?"></textarea></label>
-      <div class="row"><span class="grow"></span><button class="btn primary big" id="sub">Submit feedback</button></div></div>`.s);
+      <div class="row"><button type="button" class="btn" id="peek">See colleagues' feedback</button><span class="grow"></span><button class="btn primary big" id="sub">Submit feedback</button></div></div>`.s);
   $$(".stars", ov).forEach((s) => $$("button", s).forEach((b) => (b.onclick = () => { val[s.dataset.c] = +b.dataset.n; $$("button", s).forEach((x) => x.classList.toggle("on", +x.dataset.n <= +b.dataset.n)); })));
   $$("#rec button", ov).forEach((b) => (b.onclick = () => { val.recommendation = b.dataset.r; $$("#rec button", ov).forEach((x) => x.classList.toggle("on", x === b)); }));
+  $("#peek", ov).onclick = () => showFeedback(iv.candidate_id, iv.candidate_name);
   $("#sub", ov).onclick = async () => {
     if (crit.some(([k]) => !val[k]) || !val.recommendation) return toast("Please rate all four and pick a recommendation", "bad");
     try {

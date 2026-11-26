@@ -28,3 +28,7 @@ desktop.ini
 
 # ---- logs ----
 *.log
+
+# ---- generated tester PDF sources ----
+docs/tester/_guide.html
+docs/tester/mermaid.min.js

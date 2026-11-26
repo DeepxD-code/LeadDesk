@@ -32,7 +32,7 @@ def _load_dotenv(path: str) -> None:
 
 _load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
-from . import crypto, forum, impact, interviews, leaves, llm, security, sop, tasks, vault
+from . import crypto, forum, impact, interviews, leaves, llm, reports, security, sop, tasks, vault
 from .auth import COOKIE, current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
@@ -60,7 +60,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LeadDesk", version="1.0", lifespan=lifespan)
-for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router, interviews.public, leaves.router):
+for r in (auth_router, forum.router, tasks.router, sop.router, vault.router, interviews.router,
+          interviews.public, leaves.router, reports.router):
     app.include_router(r)
 
 # Reply headers, login throttling and session expiry. Safe defaults; driven by env.

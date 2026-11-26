@@ -16,8 +16,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      TEST_REPORT_EMAIL: ${TEST_REPORT_EMAIL:-leaddesk-test@localhost}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       MAIL_FROM: ${MAIL_FROM:-LeadDesk <scheduler@localhost>}
@@ -47,6 +48,35 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - clamav
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: leaddesk-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_NUM_PARALLEL: "2"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # One-shot pull so a fresh deploy is useful before anyone opens the assistant.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: leaddesk-ollama-pull
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${LLM_MODEL:-qwen2.5:3b}"]
 
   clamav:
     image: clamav/clamav:stable
@@ -75,3 +105,4 @@ volumes:
   caddy_data:
   caddy_config:
   clamav_db:
+  ollama_models:

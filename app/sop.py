@@ -301,11 +301,67 @@ Return JSON: {"found": true|false, "answer": "...", "sources": [excerpt numbers 
 
 Rules:
 - found=true only when the excerpts clearly contain the answer. Do not use outside knowledge or guess.
-- "answer" must be direct and actionable: 1-3 short sentences or numbered steps. No preamble.
+- "answer" MUST be a point-wise list, one point per line, using "1. ", "2. ", "3. ".
+  Give 2-5 points. Each point is one action or one fact. Never write a paragraph. No preamble.
+- Put the decision or first action first, then the remaining steps in the order the SOP gives them.
+- For a policy question (who approves, what limit), point 1 states the rule and the next points state its conditions.
+- Never use a section title or document heading as a point; state the rule or action itself.
 - Copy codes, amounts, form names, times, role titles, and thresholds exactly as written in the SOP.
 - If multiple excerpts are relevant, synthesize them using only what they state.
 - "sources" must list the excerpt numbers you actually used (e.g. [1] or [1,2]).
+- Never put a bare number, "3.", or a source reference inside "answer"; numbers belong only in "sources".
 - found=false when the excerpts do not contain the answer. Set answer to "" and sources to []."""
+
+_ABBREV = ("e.g.", "i.e.", "etc.", "Rs.", "No.", "Mr.", "Ms.", "Mrs.", "Dr.", "vs.", "approx.")
+
+
+def pointify(text: str) -> str:
+    """Render an answer as a short numbered list, even if the model wrote a paragraph.
+
+    The model is asked for points, but a 3B model sometimes ignores formatting. This
+    is a deterministic safety net: one sentence becomes one point, abbreviations and
+    amounts are left intact, and an answer that is already a list is renumbered.
+    """
+    text = (text or "").strip()
+    if not text:
+        return text
+    text = re.sub(r"^\s*\d+[.)]\s*", "", text)
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) > 1:
+        points = [re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", ln).strip() for ln in lines]
+        points = [p for p in points if p]
+        if len(points) > 1:
+            return "\n".join(f"{i}. {p}" for i, p in enumerate(points[:6], 1))
+        text = points[0] if points else text
+    protected = text
+    for abbr in _ABBREV:
+        protected = protected.replace(abbr, abbr.replace(".", "\u2024"))
+    parts = [p.replace("\u2024", ".").strip() for p in re.split(r"(?<=[.!?।])\s+(?=\S)", protected) if p.strip()]
+    if len(parts) < 2:
+        return text
+    return "\n".join(f"{i}. {p}" for i, p in enumerate(parts[:6], 1))
+
+
+def answer_text(value) -> str:
+    """Normalise the model's answer field to text.
+
+    A small model in JSON mode sometimes returns ``"answer": ["1. ...", "2. ..."]``
+    instead of a single string. Stringifying that list produces the literal
+    ``['1. ...', '2. ...']``, which pointify then numbers again. It also sometimes
+    leaks a bare source number (``["3.", "Approval by ..."]``), so drop those.
+    """
+    if isinstance(value, (list, tuple)):
+        items = []
+        for v in value:
+            s = str(v).strip()
+            if not s or re.fullmatch(r"[\d.)\-–—\s]+", s):
+                continue
+            s = re.sub(r"^\s*\d+[.)]\s*", "", s)
+            if s:
+                items.append(s)
+        return "\n".join(items)
+    return str(value or "")
+
 
 STRONG_MATCH = float(os.environ.get("SOP_STRONG_MATCH", "0.33"))
 
@@ -387,7 +443,7 @@ def answer_question(question: str):
         data = json.loads(raw)
     except Exception:  # noqa: BLE001 - model offline / bad JSON: still help the user
         return _extractive(base, use, lang)
-    answer = str(data.get("answer") or "").strip()
+    answer = answer_text(data.get("answer")).strip()
     found = bool(data.get("found")) and len(re.sub(r"\[\d+\]", "", answer).strip()) > 8
     if not found:
         if top >= STRONG_MATCH:
@@ -404,11 +460,11 @@ def answer_question(question: str):
         if 0 < n <= len(use) and n not in refs:
             refs.append(n)
     refs = refs or [1]
-    answer = re.sub(r"\s*\[\d+\]", "", answer).strip()
+    answer = pointify(re.sub(r"\s*\[\d+\]", "", answer).strip())
     answer_en = answer
     if lang != "en":
         try:
-            answer = _translate_answer(answer, lang)
+            answer = pointify(_translate_answer(answer, lang))
         except Exception:  # noqa: BLE001
             pass
     return dict(base, answer=answer, answer_en=answer_en, status="answered", mode="llm",

@@ -300,16 +300,13 @@ def seed_interviews():
     s = pick(future[30:])
     if s:
         book_slot(created[7][0], s, status="cancelled")
-    # Second round for candidate 0 with a different interviewer (shows independent panel feedback).
-    iv0 = q1("SELECT * FROM interviews WHERE id=?", (created[0][0],))
+    # Second round for candidate 0 with int1, deliberately left without feedback: int1 must
+    # submit before seeing the first round's feedback, which is what T4.5 exercises.
+    int1 = q1("SELECT * FROM users WHERE username='int1'")
     iid2, _ = _new_invite(created[0][1], "Round 2 - Manager", None)
-    s = pick(past, avoid_int=iv0["interviewer_id"])
+    s = pick([x for x in past if x["interviewer_id"] == int1["id"]])
     if s:
         book_slot(iid2, s)
-        ex("""INSERT INTO feedback(interview_id, interviewer_id, communication, technical, problem_solving, culture_fit,
-              recommendation, comments, submitted_at) VALUES (?,?,?,?,?,?,?,?,?)""",
-           (iid2, s["interviewer_id"], 5, 4, 4, 4, "advance", "Strong ownership; would fit the evening shift.",
-            now().isoformat(timespec="seconds")))
 
 
 def seed_all():

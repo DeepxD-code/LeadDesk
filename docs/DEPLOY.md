@@ -64,19 +64,18 @@ docker compose up --build
 |---|---|
 | http://localhost:8000 | LeadDesk |
 | http://localhost:8025 | Mailpit: every invite, reminder and cancellation |
-| http://localhost:11434 | Ollama, only if you run it on the host |
+| http://ollama:11434 | Ollama, inside the compose network (not published to the host) |
 
 First start seeds the team, the SOPs, the vault documents and a week of question
-history. It takes about 20 seconds.
+history. It takes about 20 seconds. The `ollama-pull` one-shot service downloads
+`qwen2.5:3b` in the background on first run (about 2 GB), so the assistant comes
+online by itself. `restart: unless-stopped` keeps it up across crashes and reboots.
 
-Optional, and worth doing for a recording:
+If you run the app outside Docker, start Ollama yourself and set
+`OLLAMA_URL=http://localhost:11434`.
 
-```bash
-ollama pull qwen2.5:3b     # once
-```
-
-Without it the assistant still answers, in extractive mode: it quotes the best SOP
-section and says so. The eval still scores 10/10, which is the point of the fallback.
+Without a model the assistant still answers, in extractive mode: it quotes the best
+SOP section and says so. The eval still scores 10/10, which is the point of the fallback.
 
 Stop with `Ctrl+C`; remove everything including data with `docker compose down -v`
 then delete `data/` and `secrets/`.
@@ -102,9 +101,11 @@ SEED_DEMO=0
 SMTP_HOST=smtp.yourprovider.com
 SMTP_PORT=587
 MAIL_FROM=LeadDesk <scheduler@leaddesk.example.com>
-# optional, only if the model runs on this host
-OLLAMA_URL=http://host.docker.internal:11434
+# optional, only if the model runs elsewhere; compose starts its own Ollama
+OLLAMA_URL=http://ollama:11434
 LLM_MODEL=qwen2.5:3b
+# where tester problem reports are emailed
+TEST_REPORT_EMAIL=testers@leaddesk.example.com
 ```
 
 If your mail provider needs credentials, add them where `app/mailer.py` reads them, or
@@ -222,9 +223,10 @@ What such platforms need you to do:
 3. Set the environment: `PUBLIC_BASE_URL=https://<your-url>`, `DEMO_MODE=0`.
 4. Keep **one instance**. Two instances mean two schedulers and duplicate reminders,
    and SQLite is a single file.
-5. Ollama is not available on these platforms. Leave `OLLAMA_URL` unset: the assistant
-   runs in extractive mode and the eval still passes 10/10. If you want the model,
-   host it separately and point `OLLAMA_URL` at it.
+5. These platforms do not run the compose file, so there is no bundled Ollama.
+   Deploy `ollama/ollama` as a second service with a persistent models volume and
+   point `OLLAMA_URL` at it, or leave `OLLAMA_URL` unset: the assistant runs in
+   extractive mode and the eval still passes 10/10.
 
 ---
 
@@ -243,9 +245,10 @@ What such platforms need you to do:
 | `GOOGLE_CLIENT_ID` | unset | OAuth web client ID for optional Calendar sync |
 | `GOOGLE_CLIENT_SECRET` | unset | OAuth web client secret; keep it outside Git |
 | `GOOGLE_REDIRECT_URI` | `<PUBLIC_BASE_URL>/api/iv/google/callback` | exact OAuth callback registered with Google |
-| `OLLAMA_URL` | `http://localhost:11434` | local model endpoint |
+| `OLLAMA_URL` | `http://ollama:11434` | local model endpoint (compose service) |
 | `LLM_MODEL` | `qwen2.5:3b` | model name |
 | `LLM_TIMEOUT` | `120` | seconds before falling back to extractive mode |
+| `TEST_REPORT_EMAIL` | `leaddesk-test@localhost` | where the in-app "Report a problem" form emails |
 | `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM` | Mailpit in compose | outbound mail |
 | `SMTP_DISABLED` | unset | `1` queues mail in the outbox only |
 | `SESSION_HOURS` | `12` | server-side session lifetime |
@@ -269,7 +272,7 @@ What such platforms need you to do:
 |---|---|---|
 | `port is already allocated` | something else on 8000 | `docker compose down`, or change the host port in the compose file |
 | Login page shows no demo accounts | `DEMO_MODE=0` | that is correct in production; sign in with a real account |
-| Assistant says "AI offline, quoting SOP sections" | Ollama not reachable | `ollama serve`, then `docker compose restart app`. Everything else still works |
+| Assistant says "AI offline, quoting SOP sections" | Ollama not reachable, or the model is still downloading | `docker compose logs ollama-pull`, then `docker compose ps ollama`; wait for the pull, or `docker compose restart ollama`. Everything else still works |
 | Hindi or Gujarati question answered with an English quote | model offline | expected; the lexicon retrieved the right section and the UI says it is quoting |
 | `Permission denied` reading `secrets/` | container user cannot read the key | check the volume mount and file ownership |
 | Vault documents show as unreadable | master key changed or lost | restore `secrets/` from backup with the matching `data/` |

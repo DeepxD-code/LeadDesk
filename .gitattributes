@@ -1,0 +1,6 @@
+# Keep generated binaries byte-exact (no CRLF conversion on checkout).
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.docx binary

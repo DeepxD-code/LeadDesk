@@ -1,7 +1,7 @@
 # One command: docker compose up --build
 #   app      http://localhost:8000      LeadDesk itself
 #   mailpit  http://localhost:8025      every invite, reminder and cancellation lands here
-#   ollama   http://localhost:11434     the local model (on the host, not in a container)
+#   ollama   http://ollama:11434        the local model, pulled automatically on first run
 services:
   app:
     build: .
@@ -9,9 +9,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # The AI endpoint: Ollama runs on the host, so the container reaches it here.
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Ollama runs as a service in this compose file; override OLLAMA_URL to use a host install.
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      TEST_REPORT_EMAIL: ${TEST_REPORT_EMAIL:-leaddesk-test@localhost}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
       SEED_DEMO: ${SEED_DEMO:-1}
@@ -27,10 +28,39 @@ services:
       - ./data:/app/data          # database + encrypted blobs
       - ./secrets:/app/secrets    # vault master key — keep this out of git
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # lets Linux hosts resolve the Ollama URL too
+      - "host.docker.internal:host-gateway"   # lets Linux hosts resolve a host Ollama if you override OLLAMA_URL
     depends_on:
       - mailpit
+      - ollama
     restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: leaddesk-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"      # keep the model warm so testers do not wait for a cold load
+      OLLAMA_NUM_PARALLEL: "2"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # One-shot: makes sure the model exists. Re-running this is cheap when it is already pulled.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: leaddesk-ollama-pull
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${LLM_MODEL:-qwen2.5:3b}"]
 
   mailpit:
     image: axllent/mailpit:latest
@@ -39,3 +69,7 @@ services:
       - "8025:8025"   # web inbox for the demo
       - "1025:1025"   # SMTP
     restart: unless-stopped
+
+volumes:
+  ollama_models:
+

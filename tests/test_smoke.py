@@ -106,6 +106,33 @@ def test_answerable_question_cites_a_source(lead):
         assert body["sources"], "an answer must always show where it came from"
 
 
+def test_model_list_answer_is_not_stringified():
+    """A model may return answer as a JSON array; it must render as points, not ['1. ...']."""
+    from app.sop import answer_text, pointify
+
+    raw = ["1. Do not retry the payment.", "2. Put the payment on hold."]
+    out = pointify(answer_text(raw))
+    assert out == "1. Do not retry the payment.\n2. Put the payment on hold."
+    assert "['" not in out and "']" not in out
+
+
+def test_paragraph_answer_becomes_numbered_points():
+    from app.sop import pointify
+
+    out = pointify("Do not retry the payment. Put the payment on hold. Escalate after 4 working hours.")
+    lines = out.splitlines()
+    assert len(lines) == 3
+    assert lines[0].startswith("1. ")
+    assert lines[2].startswith("3. ")
+
+
+def test_bare_source_number_is_dropped():
+    from app.sop import answer_text, pointify
+
+    out = pointify(answer_text(["3.", "Approval by the Operations Manager for amounts above ₹10,000"]))
+    assert out == "Approval by the Operations Manager for amounts above ₹10,000"
+
+
 # ---------------------------------------------------------------- multilingual + retrieval
 
 def test_lexicon_maps_domain_words_and_keeps_codes():
@@ -489,3 +516,29 @@ def test_lead_sets_the_overload_threshold_and_members_cannot(lead, member):
         assert member.put("/api/settings/overload-threshold", json={"threshold": 9}).status_code == 403
     finally:
         lead.put("/api/settings/overload-threshold", json={"threshold": original})
+
+def test_a_tester_report_is_kept_in_the_outbox_and_emailed(member):
+    from app.db import q1
+
+    r = member.post("/api/report", json={
+        "area": "Interviews",
+        "severity": "major",
+        "summary": "Booking link shows a taken slot",
+        "steps": "1. Open the link\n2. Book the slot",
+        "expected": "The taken slot is hidden",
+        "actual": "The slot was shown",
+        "page": "http://localhost:8000/#/interviews",
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
+    row = q1("SELECT * FROM outbox WHERE kind='report' ORDER BY id DESC LIMIT 1")
+    assert row["subject"].startswith("[LeadDesk][major][Interviews]")
+    assert "Booking link shows a taken slot" in row["body"]
+    assert "Riya Sharma" in row["body"]
+
+
+def test_a_report_needs_a_valid_severity(member):
+    r = member.post("/api/report", json={
+        "area": "Vault", "severity": "urgent", "summary": "Bad thing", "steps": "Do the thing",
+    })
+    assert r.status_code == 422
