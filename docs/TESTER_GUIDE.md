@@ -15,15 +15,15 @@ looks like, and the one thing that should fail it.
 
 ## 1. What you are testing
 
-LeadDesk is one workspace with three products built from three problem statements:
+LeadDesk is one workspace with three products. This run covers **Problem 1** and the
+cross-cutting access checks; the document vault (Problem 2) and interview scheduler
+(Problem 3) are out of scope here and are checked separately.
 
 | # | Problem statement | What the product does | Where it is tested |
 |---|---|---|---|
 | **P1** | A team lead cannot see the whole workload, and answers the same SOP questions all day | Task board + workload view + SOP assistant that answers only from uploaded SOPs, cites the source, and hands over what it cannot answer | Sections 1 and 2 |
-| **P2** | HR files sit in shared, unencrypted folders; scans cannot be searched; nobody can say who opened what | Encrypted document vault with role-based access, OCR search, watermarked downloads and an append-only audit log | Section 3 |
-| **P3** | Recruiters chase availability across messages; double bookings happen; feedback arrives late and inconsistently | Interview scheduler with availability, unique booking links, double-booking guard, `.ics` invites, reminders and independent feedback | Section 4 |
 
-Section 5 checks the things that cut across all three: roles, sign-in, mobile
+Section 5 checks the things that cut across the workspace: roles, sign-in, mobile
 layout, and the report form itself.
 
 **Your job:** perform each test on the deployed app and mark PASS or FAIL. Do not
@@ -35,15 +35,9 @@ flowchart TB
   A --> P1["Problem 1"]
   P1 --> S1["Section 1<br/>Task board + workload"]
   P1 --> S2["Section 2<br/>SOP assistant + AI quality"]
-  A --> P2["Problem 2"]
-  P2 --> S3["Section 3<br/>Secure vault"]
-  A --> P3["Problem 3"]
-  P3 --> S4["Section 4<br/>Interview scheduler"]
   A --> X["Section 5<br/>Roles, security, mobile, reporting"]
   S1 --> R["Record results"]
   S2 --> R
-  S3 --> R
-  S4 --> R
   X --> R
 ```
 
@@ -57,11 +51,10 @@ flowchart TB
 |---|---|
 | Instance | `http://localhost:8000` |
 | Test window | From 27 Nov 2026, IST |
-| Accounts | The eight demo accounts below; password `demo1234` |
+| Accounts | The six demo accounts below; password `demo1234` |
 | Mail inbox | `http://localhost:8025` (Docker demo) or **Interviews → Sent emails** |
 | Sample upload | `http://localhost:8000/static/samples/Tester_Sample_SOP.pdf` |
 | AI | `qwen2.5:3b` on local Ollama; first answer 10–60 s |
-| Calendar | Google Calendar connected; press **Reconnect** if it shows disconnected |
 | Host contact | `trex2004avradeep@gmail.com` |
 | Data | Synthetic demo data only — never upload real personal data |
 | Browser | Current Edge or Chrome; one normal + one private window |
@@ -74,24 +67,19 @@ These are the credentials for this instance.
 | Login | Name | Role | Use it for |
 |---|---|---|---|
 | `lead` | Priya Kulkarni | Team Lead | Board, workload, SOP library, needs lead, demo |
-| `m01` | Riya Sharma | Team Member (EMP0001) | My tasks, ask the SOPs, own vault documents |
-| `hr1` | Sahil Rao | HR / Recruiter (Operations) | Department vault, interviews board, invite candidates |
-| `admin` | Anil Rao | Administrator | Audit log, ciphertext proof, all documents, race simulator |
-| `int1` | Nikhil Joshi | Interviewer | Availability, my interviews, feedback |
-| `int2` | Sonal Bhatt | Interviewer | Second feedback opinion |
+| `m01` | Riya Sharma | Team Member (EMP0001) | My tasks, ask the SOPs |
+| `hr1` | Sahil Rao | HR / Recruiter (Operations) | Sent emails, role-boundary checks |
+| `admin` | Anil Rao | Administrator | Sent emails, role-boundary checks |
 | `tester` | LeadDesk Tester | Tester | Forum only; role-boundary test |
 | `dev` | LeadDesk Developer | Developer | Forum only; role-boundary test |
 
-`int2` is not on the one-click demo list. Type the username and password manually.
 
 ### 2.2 Windows and tools
 
-- Use **two browser windows**: a normal window for staff accounts and a **private /
-  incognito** window for the candidate booking flow. Sessions in the same profile
-  overwrite each other.
-- Keep one extra private window for the double-booking test.
-- Have a PDF or DOCX on your machine for the upload tests. If you do not have one,
-  download the ready-made sample:
+- Use one browser window. A private window is useful only if you want to compare two
+  roles side by side; sessions in the same profile overwrite each other.
+- Have a small PDF for the SOP upload test (T2.5). If you do not have one, download
+  the ready-made sample:
   `http://localhost:8000/static/samples/Tester_Sample_SOP.pdf`
 - Find the mail inbox:
   - Docker demo: `http://localhost:8025` (Mailpit, all mail is caught here).
@@ -102,8 +90,8 @@ These are the credentials for this instance.
 ### 2.3 Test data
 
 Use fictional names and the sample files. **Do not upload real passports, real
-salary letters, or any real personal data.** The vault is encrypted, but this is a
-test instance. The seeded documents are synthetic.
+salary letters, or any real personal data.** This is a test instance; the seeded
+documents are synthetic.
 
 ### 2.4 What “AI online” looks like
 
@@ -140,8 +128,7 @@ flowchart LR
   D --> E["My tasks"]
   E --> F["hr1 → Document vault"]
   F --> G["admin → Overview + Audit log in nav"]
-  G --> H["int1 → My interviews"]
-  H --> I["tester and dev → Team forum only"]
+  G --> I["tester and dev → Team forum only"]
   I --> J{"Every landing page correct?"}
   J -->|yes| P[PASS]
   J -->|no| X["FAIL — report T0.1"]
@@ -160,7 +147,6 @@ flowchart LR
 | `m01` | My tasks | Ask the SOPs, My documents | Task board, Audit log, Interviews |
 | `hr1` | Document vault | Interviews, Ask the SOPs, System proof | Audit log |
 | `admin` | Overview | Task board, Document vault, **Audit log**, Interviews, System proof | — |
-| `int1` | My interviews | Availability | Vault, Audit log |
 | `tester` / `dev` | Team forum | Team forum | Everything else |
 
 **Catch:** a member sees the Task board, or `tester` sees the vault.
@@ -760,569 +746,7 @@ flowchart LR
 
 ---
 
-## Section 3 — Secure HR vault (Problem 2)
 
-**What this proves:** files are encrypted before they hit disk, only the right
-roles can see them, scans are searchable, and every action is recorded.
-
-```mermaid
-flowchart LR
-  A["Upload + auto-type"] --> B["Ciphertext on disk"]
-  B --> C["OCR search finds a scan"]
-  C --> D["Role scopes: own / department / all"]
-  D --> E["Denied request is audited"]
-  E --> F["Audit + watermark"]
-```
-
-### T3.1 — Upload a document, detect its type, correct it
-
-`hr1` · Problem 2 · Functional
-
-![Upload HR document with employee, file, auto-detect type and retention.](tester/T3.1-upload.png)
-
-*Upload HR document with employee, file, auto-detect type and retention.*
-
-
-```mermaid
-flowchart LR
-  A["Document vault → Upload"] --> B["Employee EMP0001 + sample PDF"]
-  B --> C["Type: Detect automatically"]
-  C --> D["Encrypt and upload"]
-  D --> E{"Stored with a type + reason?"}
-  E -->|no| X["FAIL — report T3.1"]
-  E -->|yes| F["Open it, change the type"]
-  F --> G{"Toast Type corrected?"}
-  G -->|yes| P[PASS]
-  G -->|no| X
-```
-
-**Do**
-
-1. Sign in as `hr1` → **Document vault** → **Upload document**.
-2. Employee ID: `EMP0001` (pick Riya Sharma from the list).
-3. File: the sample PDF from T2.5, or any small PDF/image/DOCX.
-4. Document type: **Detect automatically**. Keep until: any future date.
-5. Press **Encrypt and upload**, then open the new document.
-6. Change **Type** to another value and watch for the toast.
-
-**Expect**
-
-- The upload succeeds and shows the detected type and the reason (rule or user).
-- The document appears in the list with employee, type, file name, upload time and
-  retention.
-- Changing the type shows **“Type corrected”**, and reopening shows the new type.
-
-**Catch:** the upload fails, the type is blank, or the correction does not stick.
-
----
-
-### T3.2 — The file on disk is ciphertext
-
-`admin` · Problem 2 · Encryption
-
-![Stored bytes start LDV1 and are unreadable; entropy 7.998 and integrity check pass.](tester/T3.2-ciphertext.png)
-
-*Stored bytes start LDV1 and are unreadable; entropy 7.998 and integrity check pass.*
-
-
-```mermaid
-flowchart LR
-  A["Sign in as admin"] --> B["Audit log"]
-  B --> C["What is on disk? → choose a document"]
-  C --> D{"Stored bytes start LDV1 and are unreadable?"}
-  D -->|no| X["FAIL — report T3.2"]
-  D -->|yes| E{"Entropy near 8.0 and integrity check passes?"}
-  E -->|yes| P[PASS]
-  E -->|no| X
-```
-
-**Do**
-
-1. Sign in as `admin` → **Audit log**.
-2. In **What is on disk?**, choose any document (for example #3).
-3. Compare the **Stored on disk** hex with the **Original after decryption** hex.
-
-**Expect**
-
-- The stored head starts with `LDV1` and looks random; the original head is readable
-  text (for example `%PDF`).
-- Entropy is near **8.0 bits/byte**, printable ratio is low.
-- **Integrity check** passes, and the master key fingerprint is shown.
-- The key is not in the database or the code (the fingerprint is the only hint).
-
-**Catch:** the stored bytes look like the original, entropy is low, or integrity
-fails.
-
----
-
-### T3.3 — A phrase inside a scan is found and highlighted
-
-`hr1` · Problem 2 · OCR + search
-
-![Search for 'relocation bonus' finds the scan with a highlighted snippet.](tester/T3.3-ocr-search.png)
-
-*Search for 'relocation bonus' finds the scan with a highlighted snippet.*
-
-![The opened scan shows the OCR text panel with the match highlighted.](tester/T3.3-ocr-panel.png)
-
-*The opened scan shows the OCR text panel with the match highlighted.*
-
-
-```mermaid
-flowchart LR
-  A["Document vault search"] --> B["relocation bonus"]
-  B --> C{"Result includes the scan?"}
-  C -->|no| X["FAIL — report T3.3"]
-  C -->|yes| D["Open it"]
-  D --> E{"OCR text panel + highlighted match?"}
-  E -->|yes| P[PASS]
-  E -->|no| X
-```
-
-**Do**
-
-1. As `hr1`, open **Document vault**.
-2. Search: `relocation bonus`.
-3. Find the result for `EMP0001_relocation_offer_addendum_scan.jpg` and open it.
-
-**Expect**
-
-- The result has a **“found inside a scan”** pill and a snippet with the match
-  highlighted.
-- The result count and scope label say **Operations department**.
-- The opened document shows the text panel labelled **“read by OCR from the scan”**,
-  with “relocation bonus” highlighted.
-- Searching leaves an entry in the audit log (admin can confirm).
-
-**Catch:** the scan is missing from results, or the match is not highlighted.
-
----
-
-### T3.4 — Each role sees only its scope
-
-`m01` + `hr1` + `admin` · Problem 2 · Permissions
-
-![m01's vault scope: own documents only (EMP0001).](tester/T3.4-scope.png)
-
-*m01's vault scope: own documents only (EMP0001).*
-
-
-```mermaid
-flowchart LR
-  A["m01 → My documents"] --> B{"Only EMP0001?"}
-  B -->|no| X["FAIL — report T3.4 (scope leak)"]
-  B -->|yes| C["hr1 → Document vault"]
-  C --> D{"Only Operations?"}
-  D -->|no| X
-  D -->|yes| E["admin → Document vault"]
-  E --> F{"All departments?"}
-  F -->|yes| G["Search as m01, then hr1"]
-  G --> H{"Results respect the same scope?"}
-  H -->|yes| P[PASS]
-  H -->|no| X
-```
-
-**Do**
-
-1. As `m01`, open **My documents**. Check the scope pill and every employee ID.
-2. As `hr1`, open **Document vault**. Check the scope pill and departments.
-3. As `admin`, open **Document vault**. Check the scope pill and count.
-4. Search `relocation` as `m01`, then as `hr1`, then as `admin`.
-
-**Expect**
-
-- `m01`: scope **Your own documents (EMP0001)**; only Riya's documents.
-- `hr1`: scope **Operations department**; only Operations employees.
-- `admin`: scope **All departments**; all ten seeded documents plus any uploads.
-- Search result counts follow the same scope, and a result from another department
-  never appears.
-
-**Catch:** any document from outside the scope is visible or searchable. This is an
-**S1** finding.
-
----
-
-### T3.5 — A denied request is denied clearly and recorded
-
-`m01` + `admin` · Problem 2 · Access control + audit
-
-![Doc #7 (Finance) denied to m01, with role and scope shown.](tester/T3.5-denied.png)
-
-*Doc #7 (Finance) denied to m01, with role and scope shown.*
-
-
-```mermaid
-flowchart LR
-  A["m01 opens Open by doc #"] --> B["Enter 7 (Finance)"]
-  B --> C{"Access denied?"}
-  C -->|no| X["FAIL — report T3.5 (S1)"]
-  C -->|yes| D["admin → Audit log → Denied"]
-  D --> E{"DENIED row for m01 / doc 7?"}
-  E -->|yes| P[PASS]
-  E -->|no| X
-```
-
-**Do**
-
-1. As `m01`, open **My documents**.
-2. In **Open by doc #**, enter `7` and press **Open**. (Doc 7 belongs to Finance.)
-3. As `admin`, open **Audit log** → filter **Denied**.
-
-**Expect**
-
-- `m01` sees **Access denied**, with their name, role and scope.
-- The document does not open and no text is leaked.
-- The audit log has a **DENIED** row for `m01`, doc #7, with a timestamp.
-- The hash chain badge stays **Chain intact**.
-
-**Catch:** the document opens, or the denial is not logged.
-
----
-
-### T3.6 — Audit trail and watermarked download
-
-`hr1` + `admin` · Problem 2 · Audit + download
-
-![Document view with Download watermarked copy (password re-check).](tester/T3.6-watermark.png)
-
-*Document view with Download watermarked copy (password re-check).*
-
-![Audit log with the chain-intact badge and the latest rows.](tester/T3.6-audit.png)
-
-*Audit log with the chain-intact badge and the latest rows.*
-
-
-```mermaid
-flowchart LR
-  A["hr1 opens a document"] --> B["Download watermarked copy"]
-  B --> C["Re-enter password"]
-  C --> D{"File downloads with CONFIDENTIAL stamp?"}
-  D -->|no| X["FAIL — report T3.6"]
-  D -->|yes| E["admin → Audit log"]
-  E --> F{"Upload, view, download, search rows?"}
-  F -->|yes| G{"No edit or delete control?"}
-  G -->|yes| H{"Chain intact?"}
-  H -->|yes| P[PASS]
-  H -->|no| X
-```
-
-**Do**
-
-1. As `hr1`, open a document you can see.
-2. Press **Download watermarked copy** and re-enter the password (`demo1234`).
-3. Open the downloaded file.
-4. As `admin`, open **Audit log** and review the actions.
-
-**Expect**
-
-- The download happens only after the password re-check.
-- The file is stamped **CONFIDENTIAL — hr1 — <time> IST — doc #N** (visible on the
-  image/PDF).
-- The audit log has rows for **upload**, **view**, **download** and **search**, each
-  with user, time, action, document and detail.
-- There is no edit or delete control anywhere in the audit UI.
-- The chain badge says **Chain intact**.
-
-**Catch:** a download without re-auth, no watermark, missing audit rows, or any
-edit/delete affordance.
-
----
-
-## Section 4 — Interview scheduler (Problem 3)
-
-**What this proves:** a candidate can book without an account, two people cannot
-take the same slot, invites and reminders arrive, and feedback stays independent.
-
-```mermaid
-flowchart LR
-  A["Interviewer adds slots"] --> B["Recruiter invites candidate"]
-  B --> C["Candidate books from a private window"]
-  C --> D["ICS invite lands"]
-  D --> E["Race: only one booking wins"]
-  E --> F["Reschedule sends a new ICS"]
-  F --> G["Feedback is hidden until yours is in"]
-  G --> H["Reminder + cancellation"]
-```
-
-### T4.1 — One-off and recurring availability
-
-`int1` · Problem 3 · Functional
-
-![Availability: one-off and recurring slot rules, with the calendar.](tester/T4.1-availability.png)
-
-*Availability: one-off and recurring slot rules, with the calendar.*
-
-
-```mermaid
-flowchart LR
-  A["Sign in as int1"] --> B["Availability"]
-  B --> C["Day tomorrow, 10:00–13:00, 45 min, Just this day"]
-  C --> D["Add slots"]
-  D --> E{"Slots appear?"}
-  E -->|no| X["FAIL — report T4.1"]
-  E -->|yes| F["Repeat: same day for 2 more weeks"]
-  F --> G{"3 weekly sets added?"}
-  G -->|yes| P[PASS]
-  G -->|no| X
-```
-
-**Do**
-
-1. Sign in as `int1` → **Availability**.
-2. Add: day **tomorrow**, from **10:00** to **13:00**, length **45**, repeat
-   **Just this day**, location blank.
-3. Press **Add slots**.
-4. Add the same times again with repeat **Same day for 2 more weeks**.
-
-**Expect**
-
-- The first add creates four 45-minute slots (10:00, 10:45, 11:30, 12:15) and they
-  appear as pills under tomorrow.
-- The recurring add creates the same pattern on the next two matching days (three
-  weeks in total), and the toast says how many were added or skipped.
-- Overlapping times are skipped with a message, not duplicated.
-- The candidate-facing length choices are 30/45/60.
-
-**Catch:** wrong slot boundaries, duplicates, or a repeat that only creates one day.
-
----
-
-### T4.2 — Invite, book from a private window, receive the `.ics`
-
-`hr1` + candidate · Problem 3 · End-to-end
-
-![Candidate booking page: open slots and Book this time.](tester/T4.2-booking.png)
-
-*Candidate booking page: open slots and Book this time.*
-
-
-```mermaid
-flowchart LR
-  A["hr1 → Invite candidate"] --> B["Create booking link"]
-  B --> C["Copy link"]
-  C --> D["Open in private window"]
-  D --> E["Pick a slot → Book this time → Confirm booking"]
-  E --> F{"Confirmation with time + interviewer?"}
-  F -->|no| X["FAIL — report T4.2"]
-  F -->|yes| G["Open Mailpit / Sent emails"]
-  G --> H{"Confirmation + .ics to candidate and interviewer?"}
-  H -->|yes| I["Open the .ics"]
-  I --> J{"Calendar shows date, time, join link?"}
-  J -->|yes| P[PASS]
-  J -->|no| X
-```
-
-**Do**
-
-1. As `hr1`, open **Interviews** → **Invite candidate**.
-2. Enter: name `Test Candidate A`, email `candidate.a@example.com`, role
-   `Process Associate`, round `Round 1`, length `45`. Press **Create booking link**.
-3. Press **Link** on the row (it copies and opens the link). Copy the URL.
-4. Open the URL in a **private window**.
-5. Pick an open slot → **Book this time** → **Confirm booking**.
-6. Open Mailpit (or **Sent emails**) and find the confirmation.
-7. Download and open the `.ics`.
-
-**Expect**
-
-- The booking page greets the candidate by name and shows only **open** times for
-  the right interviewer/length.
-- The booking needs two presses: **Book this time**, then **Confirm booking**.
-- The confirmation shows the date/time in IST and the interviewer.
-- The candidate and the interviewer each get an email with an `.ics` attachment.
-- The `.ics` opens in a calendar app with the date, time, location/join link and a
-  recognizable organizer.
-- The board row moves to **Scheduled**; the slot no longer appears as open.
-
-**Catch:** the link shows booked/blocked slots, the booking confirms but no invite
-arrives, or the `.ics` is empty/corrupt.
-
----
-
-### T4.3 — Two candidates, one slot: exactly one wins
-
-`admin` (simulator) and two private windows · Problem 3 · Concurrency
-
-![Race simulator: exactly one booking, the other refused.](tester/T4.3-race.png)
-
-*Race simulator: exactly one booking, the other refused.*
-
-
-```mermaid
-flowchart LR
-  A["Open the same booking link in two private windows"] --> B["Both choose the same slot"]
-  B --> C["Press Book + Confirm in both, as close as possible"]
-  C --> D{"Exactly one confirmation?"}
-  D -->|no| X["FAIL — report T4.3 (S1)"]
-  D -->|yes| E["Loser sees a clear taken message"]
-  E --> F{"Board shows one booking?"}
-  F -->|yes| G["admin → System proof → Simulate a race"]
-  G --> H{"Simulator: Only one booking was made"}
-  H -->|yes| P[PASS]
-  H -->|no| X
-```
-
-**Do**
-
-1. Create a second candidate (`Test Candidate B`) and copy both booking links.
-2. Open link A in private window 1 and link B in private window 2.
-3. Choose the **same** open slot in both.
-4. Press **Book this time** → **Confirm booking** in both as close together as you
-   can.
-5. As `admin`, open **System proof** → **Double-booking guard** → **Simulate a
-   race**.
-
-**Expect**
-
-- Exactly one candidate gets a confirmed booking.
-- The other sees a clear message that the slot was taken and is offered other times
-  (or a refresh).
-- The board has one booking for that slot; the slot is booked once.
-- The simulator reports **“Only one booking was made.”** and cleans up its test
-  booking.
-
-**Catch:** both confirmations succeed, or the loser gets a server error instead of a
-clear message. This is an **S1** finding.
-
----
-
-### T4.4 — Reschedule moves the booking and sends a new invite
-
-Candidate + `hr1` · Problem 3 · Change flow
-
-![Booked confirmation with Change the time and Cancel.](tester/T4.4-change.png)
-
-*Booked confirmation with Change the time and Cancel.*
-
-```mermaid
-flowchart LR
-  A["Candidate opens the same link"] --> B["Change the time"]
-  B --> C["Pick another open slot → Confirm"]
-  C --> D{"Confirmation shows the new time?"}
-  D -->|no| X["FAIL — report T4.4"]
-  D -->|yes| E["Board status = Rescheduled"]
-  E --> F{"New .ics with a higher sequence?"}
-  F -->|yes| G{"Old slot is free again?"}
-  G -->|yes| P[PASS]
-  G -->|no| X
-```
-
-**Do**
-
-1. Reopen the candidate's booking link (from T4.2).
-2. Press **Change the time**.
-3. Pick a different open slot and confirm.
-4. As `hr1`, check the board row and the emails.
-5. Check that the old slot is open again on the booking page.
-
-**Expect**
-
-- The page shows the new time and “Moved 1 time”.
-- The board row shows **Rescheduled** and the new time, with a reschedule count.
-- Candidate and interviewer get a new `.ics`; in a calendar app it updates the same
-  event (sequence increases), rather than creating a duplicate.
-- The old slot is offered again; the new slot is no longer open.
-
-**Catch:** the old booking survives, the calendar creates a duplicate, or no new
-invite is sent.
-
----
-
-### T4.5 — Feedback is independent and hidden until you submit
-
-`int1` + `int2` + `hr1` · Problem 3 · Privacy + structure
-
-![Feedback lock: a colleague has submitted; yours must come first.](tester/T4.5-lock.png)
-
-*Feedback lock: a colleague has submitted; yours must come first.*
-
-
-```mermaid
-flowchart LR
-  A["int1 opens a candidate with two rounds"] --> B["Feedback before submitting"]
-  B --> C{"Colleague feedback hidden?"}
-  C -->|no| X["FAIL — report T4.5 (S1)"]
-  C -->|yes| D["Rate 4 criteria + recommendation + comment"]
-  D --> E["Submit"]
-  E --> F{"Now sees both feedbacks?"}
-  F -->|yes| G["hr1 board shows Feedback pending / Completed"]
-  G --> H{"Filters by recruiter + role work?"}
-  H -->|yes| P[PASS]
-  H -->|no| X
-```
-
-**Do**
-
-1. As `int1`, open **My interviews** and find a candidate with feedback pending
-   (the seed gives one candidate two rounds with different interviewers).
-2. Press **Give feedback** (or **Feedback**).
-3. Press **See colleagues' feedback** before submitting.
-4. Rate all four criteria (1–5), choose **Advance/Hold/Reject**, add a comment,
-   press **Submit feedback**.
-5. As `int2`, open the same candidate and submit feedback.
-6. As `hr1`, open **Interviews** and use the recruiter and role filters.
-
-**Expect**
-
-- Before submitting, `int1` sees a lock message: N colleagues have submitted, submit
-  yours first.
-- The form requires all four ratings and a recommendation; it refuses an incomplete
-  submit.
-- After submitting, `int1` sees both feedbacks side by side.
-- The board shows **Feedback pending** until feedback exists, then **Completed**.
-- The recruiter and role dropdowns filter the rows; the KPI tiles filter by status.
-
-**Catch:** a colleague's feedback is visible before submitting, or an incomplete
-form saves.
-
----
-
-### T4.6 — Reminder at 24 hours and cancellation
-
-`int1` + `hr1` + candidate · Problem 3 · Scheduled jobs + mail
-
-![Reminder email in Sent emails, addressed to the interviewer.](tester/T4.6-reminder.png)
-
-*Reminder email in Sent emails, addressed to the interviewer.*
-
-
-```mermaid
-flowchart LR
-  A["int1 adds a slot about 23 h from now"] --> B["hr1 invites + candidate books"]
-  B --> C["Wait up to 2 minutes"]
-  C --> D{"Reminder in Mailpit?"}
-  D -->|no| X["FAIL/BLOCKED — report T4.6"]
-  D -->|yes| E["hr1 cancels from the board"]
-  E --> F{"Cancellation mail + board Cancelled?"}
-  F -->|yes| G{"Slot freed?"}
-  G -->|yes| P[PASS]
-  G -->|no| X
-```
-
-**Do**
-
-1. As `int1`, add a slot for **tomorrow, one hour earlier than the current time**
-   (about 23 hours away), length 30.
-2. As `hr1`, invite a candidate, copy the link, and book that slot in a private
-   window.
-3. Wait up to **2 minutes** for the scheduler tick.
-4. Open Mailpit (or **Sent emails**) and find the **Reminder: interview …** message
-   to the candidate and the interviewer.
-5. As `hr1`, press **Cancel** on the board row and confirm.
-6. Check the mail and the board.
-
-**Expect**
-
-- A reminder email arrives within about 2 minutes, addressed to both sides, with the
-  time and the join link.
-- Cancelling asks for confirmation, sends a **cancellation** to both sides, and the
-  board row becomes **Cancelled**.
-- The slot is free again on the booking page (the candidate sees no active booking).
-
-**Catch:** no reminder after 3 minutes (mark **BLOCKED** and note the time), no
-cancellation mail, or the slot stays blocked.
-
----
 
 ## Section 5 — Cross-cutting access, security and UX
 
@@ -1555,7 +979,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  A["Open DevTools Console"] --> B["Visit Overview, Board, Assistant, Vault, Interviews"]
+  A["Open DevTools Console"] --> B["Visit Overview, Board, Assistant"]
   B --> C{"Any red errors on load?"}
   C -->|no| D["Ask one SOP question"]
   C -->|yes| X["FAIL — screenshot console + report T5.6"]
@@ -1569,7 +993,7 @@ flowchart LR
 **Do**
 
 1. Open DevTools → Console. Keep it open.
-2. Visit Overview, Task board, Ask the SOPs, Documents, and Interviews.
+2. Visit Overview, Task board, and Ask the SOPs.
 3. Ask the 402 question once.
 
 **Expect**
@@ -1593,13 +1017,9 @@ never returns.
 |---|---|
 | AI badge says offline, answers still arrive | The assistant falls back to quoting the best SOP section. Report it under **T0.2** if the deployment promised an online model, but the answer itself is not wrong. |
 | The first AI answer is slow | The model loads on first use; later answers are faster. |
-| Shared Google calendars do not block slots | Busy checks use the **primary** calendar only; a documented limitation. |
-| Panel interviews are multiple rounds | Each round has its own interviewer and independent feedback. |
 | `tester` and `dev` see only the forum | Those roles are intentionally restricted. |
 | Mailpit receives everything in the demo | It is a test inbox, not a real mail service. |
-| Google Calendar controls are missing | OAuth is optional and not configured on every instance. |
 | Sample data is synthetic | Names, salaries and documents are fabricated for the demo. |
-| ClamAV/audit shipping are silent | They are optional controls; the app works without them. |
 
 ---
 
@@ -1617,22 +1037,6 @@ never returns.
 | T2.6 | `त्रुटि 402 आने पर मुझे क्या करना चाहिए?` | 402, Error Code Guide |
 | T2.6 | `₹10,000 થી વધુ રિફંડ કોણ મંજૂર કરે છે?` | Operations Manager, Claims and Payments SOP |
 
-### Vault scan phrase
-
-Search: `relocation bonus` → `EMP0001_relocation_offer_addendum_scan.jpg`
-(Operations, EMP0001). The OCR text also says “42 months”.
-
-### Document IDs used in the guide
-
-| ID | Employee | Department | File |
-|---|---|---|---|
-| 7 | EMP0120 | Finance | `EMP0120_appraisal_scan.pdf` |
-| 3 | EMP0001 | Operations | `EMP0001_relocation_offer_addendum_scan.jpg` |
-
-### Candidate emails
-
-Use `candidate.a@example.com` and `candidate.b@example.com`. In the Docker demo,
-Mailpit catches them; they do not need to be real.
 
 ### Sample SOP for upload
 

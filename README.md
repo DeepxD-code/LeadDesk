@@ -201,7 +201,7 @@ together, firewall, troubleshooting, and the demo-day checklist.
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | laptop, VPS and hosted deployment; operations |
 | [`docs/REVIEW.md`](docs/REVIEW.md) | the full checkup: what was verified, what was fixed, what is a deliberate trade-off |
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | one page, no jargon, for the person using it |
-| [`docs/TESTER_GUIDE.md`](docs/TESTER_GUIDE.md) | 33 tester checks with screenshots and flows; also as [`TESTER_GUIDE.pdf`](docs/TESTER_GUIDE.pdf) |
+| [`docs/TESTER_GUIDE.md`](docs/TESTER_GUIDE.md) | 21 tester checks with screenshots and flows; also as [`TESTER_GUIDE.pdf`](docs/TESTER_GUIDE.pdf) |
 | [`docs/SECURITY_NOTE.md`](docs/SECURITY_NOTE.md) | encryption, roles, audit chain, and what production would change |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | the visual language |
 | [`docs/HACKATHON_PLAYBOOK.md`](docs/HACKATHON_PLAYBOOK.md) | what winning entries do, and the scorecard against this one |
