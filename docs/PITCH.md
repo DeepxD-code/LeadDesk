@@ -23,7 +23,7 @@ head. Then it promises one screen, not five.
 ## Before you start
 
 - `docker compose up --build`, then open http://localhost:8000
-- Press **Take the 3-minute demo** on the login page. It signs you in as the team lead
+- Press **Open guided demo** on the login page. It signs you in as the team lead
   and opens the **Judge demo** page.
 - Ollama: leave it running if you have it. If not, say so out loud during step 4 —
   it is a feature, not a failure.
@@ -127,7 +127,7 @@ Switch person to **Anil Rao (Admin)** using the selector, then **Judge demo**:
 | Answer quality | 5/5 answerable with source, 3/3 refusals, 2/2 Hindi and Gujarati | `scripts/eval_sop.py` |
 | Vault | 10 documents, 4 OCR scans, entropy 7.998 bits/byte | `/api/proof` |
 | Booking | 2 concurrent requests, 1 booking | `/api/iv/demo/race` |
-| Tests | 45 passing | `pytest` |
+| Tests | 55 passing | `pytest` |
 
 If someone asks where a number comes from, open **How we know it works**. Every figure
 on screen is computed on request.
@@ -212,7 +212,7 @@ Seven slides, one idea each:
 4. **Answers with a source, or none** — the assistant, the gate, the gap list.
 5. **It runs on the box** — local model, offline fallback, Hindi and Gujarati.
 6. **Trust is auditable** — ciphertext on disk, hash-chained audit, the booking race.
-7. **Measured** — 10/10 eval, 36 tests, the hours saved, and what is next.
+7. **Measured** — 10/10 eval, 55 tests, the hours saved, and what is next.
 
 Slide 7 is where most teams put a roadmap and lose the point. Put the numbers first,
 the roadmap last, one line.

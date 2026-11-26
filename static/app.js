@@ -864,6 +864,7 @@ VIEWS.overview = async (el) => {
         <span data-chart-legend="open"><i class="legend-dot warning"></i>Near limit</span>
         <span data-chart-legend="open"><i class="legend-dot danger"></i>Overloaded</span>
         <span class="hidden" data-chart-legend="overdue"><i class="legend-dot danger"></i>Has overdue tasks</span>
+        <button class="text-action" id="set-limit" title="Change the overload line">Limit: ${w.threshold} tasks</button>
         <button class="text-action" id="show-all">View all people</button>
       </footer>
     </section>
@@ -912,6 +913,27 @@ VIEWS.overview = async (el) => {
         location.hash = "#/board?member=" + button.dataset.person;
       };
     });
+  };
+  $("#set-limit").onclick = () => {
+    const ov = modal(html`
+      <div class="modal-head"><h2>Overload threshold</h2><button class="x" type="button" data-close aria-label="Close">×</button></div>
+      <p class="muted small">Anyone with more open tasks than this is marked overloaded.</p>
+      <form id="limit-form" class="row" style="align-items:flex-end">
+        <label class="f grow">Open task limit
+          <input class="input" type="number" name="threshold" min="1" max="100" value="${w.threshold}" required>
+        </label>
+        <button class="btn primary" type="submit">Save</button>
+      </form>`);
+    $("#limit-form", ov).onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const threshold = Number(new FormData(e.target).get("threshold"));
+        await api("/api/settings/overload-threshold", { method: "PUT", body: { threshold } });
+        closeModal();
+        route();
+        toast(`Overload line set to ${threshold} tasks`);
+      } catch (err) { fail(err); }
+    };
   };
   $("#show-all").onclick = () => showPeople("All team members", w.members, "Choose a person to see their tasks on the board.");
   $("#view-risk").onclick = () => (location.hash = "#/board");

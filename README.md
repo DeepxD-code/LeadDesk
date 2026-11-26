@@ -204,11 +204,12 @@ together, firewall, troubleshooting, and the demo-day checklist.
 | [`docs/SECURITY_NOTE.md`](docs/SECURITY_NOTE.md) | encryption, roles, audit chain, and what production would change |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | the visual language |
 | [`docs/HACKATHON_PLAYBOOK.md`](docs/HACKATHON_PLAYBOOK.md) | what winning entries do, and the scorecard against this one |
+| [`docs/PROBLEM_STATEMENT.md`](docs/PROBLEM_STATEMENT.md) | the three briefs, broken down point by point, with where each one is proved |
 
 ## Tests
 
 ```bash
-python -m pytest tests -q      # 45 tests, ~16 s
+python -m pytest tests -q      # 55 tests, ~16 s
 ```
 
 They cover login and role gates, the multilingual path, the retrieval tie-break, the answer gate, the booking race, the

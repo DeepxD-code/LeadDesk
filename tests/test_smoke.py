@@ -476,3 +476,16 @@ def test_vault_search_finds_a_document_by_its_decrypted_filename(admin):
     query = doc["original_name"].replace("_", " ").rsplit(".", 1)[0][:14]
     results = admin.get("/api/vault/search", params={"qs": query}).json()["results"]
     assert doc["id"] in {result["doc"]["id"] for result in results}
+
+def test_lead_sets_the_overload_threshold_and_members_cannot(lead, member):
+    from app.db import q1
+
+    original = int(q1("SELECT value FROM settings WHERE key='overload_threshold'")["value"])
+    try:
+        r = lead.put("/api/settings/overload-threshold", json={"threshold": 4})
+        assert r.status_code == 200
+        assert r.json()["threshold"] == 4
+        assert lead.get("/api/workload").json()["threshold"] == 4
+        assert member.put("/api/settings/overload-threshold", json={"threshold": 9}).status_code == 403
+    finally:
+        lead.put("/api/settings/overload-threshold", json={"threshold": original})
