@@ -30,12 +30,30 @@ services:
       DATA_DIR: /app/data
       VAULT_MASTER_KEY_FILE: /app/secrets/vault_master.key
       VAULT_AUTOCREATE_KEY: "1"
+      VAULT_MASTER_KEY_COMMAND: ${VAULT_MASTER_KEY_COMMAND:-}
       SESSION_HOURS: ${SESSION_HOURS:-12}
+      CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_REQUIRED: ${CLAMAV_REQUIRED:-0}
+      AUDIT_SHIP_FILE: ${AUDIT_SHIP_FILE:-}
+      AUDIT_SHIP_URL: ${AUDIT_SHIP_URL:-}
+      AUDIT_ALERT_WEBHOOK: ${AUDIT_ALERT_WEBHOOK:-}
+      AUDIT_ALERT_DENIAL_THRESHOLD: ${AUDIT_ALERT_DENIAL_THRESHOLD:-5}
+      AUDIT_ALERT_WINDOW_MINUTES: ${AUDIT_ALERT_WINDOW_MINUTES:-15}
     volumes:
       - ../data:/app/data
       - ../secrets:/app/secrets
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - clamav
+
+  clamav:
+    image: clamav/clamav:stable
+    container_name: leaddesk-clamav
+    restart: unless-stopped
+    volumes:
+      - clamav_db:/var/lib/clamav
 
   caddy:
     image: caddy:2-alpine
@@ -56,3 +74,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  clamav_db:
