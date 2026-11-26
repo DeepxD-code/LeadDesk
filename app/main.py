@@ -13,6 +13,25 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+
+def _load_dotenv(path: str) -> None:
+    """Load KEY=VALUE pairs from .env for local runs (real environment wins)."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key and key not in os.environ:
+                    os.environ[key] = value.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+
+
+_load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+
 from . import crypto, forum, impact, interviews, leaves, llm, security, sop, tasks, vault
 from .auth import COOKIE, current_user
 from .auth import router as auth_router
