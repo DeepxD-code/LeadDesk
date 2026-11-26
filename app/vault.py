@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import date
+from pathlib import Path
 
 log = logging.getLogger("leaddesk.vault")
 

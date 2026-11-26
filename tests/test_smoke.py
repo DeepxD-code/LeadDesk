@@ -286,7 +286,10 @@ def test_expired_vault_document_is_blocked_from_content_and_search(admin):
 
         listed = next(d for d in admin.get("/api/vault/docs").json()["docs"] if d["id"] == doc["id"])
         assert listed["retention_expired"] is True
-        query = doc["original_name"].rsplit(".", 1)[0]
+        from app import crypto
+
+        name = crypto.decrypt_field(doc["original_name"], "vault_docs.original_name")
+        query = name.replace("_", " ").rsplit(".", 1)[0]
         results = admin.get("/api/vault/search", params={"qs": query}).json()["results"]
         assert doc["id"] not in {result["doc"]["id"] for result in results}
 
@@ -465,3 +468,11 @@ def test_vault_download_requires_reauthentication(admin):
     dl = admin.get(f"/api/vault/docs/{doc_id}/file?download=true")
     assert dl.status_code == 200
     assert dl.headers["Content-Disposition"].startswith("attachment;")
+
+def test_vault_search_finds_a_document_by_its_decrypted_filename(admin):
+    docs = [d for d in admin.get("/api/vault/docs").json()["docs"] if not d["retention_expired"]]
+    assert docs
+    doc = docs[0]
+    query = doc["original_name"].replace("_", " ").rsplit(".", 1)[0][:14]
+    results = admin.get("/api/vault/search", params={"qs": query}).json()["results"]
+    assert doc["id"] in {result["doc"]["id"] for result in results}

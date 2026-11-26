@@ -16,6 +16,12 @@ os.environ["VAULT_MASTER_KEY_FILE"] = os.path.join(_TMP, "vault_master.key")
 os.environ["SEED_DEMO"] = "1"
 os.environ["DEMO_MODE"] = "1"
 os.environ["SMTP_DISABLED"] = "1"      # never try to reach a mail server from tests
+# Tests must never write to the real audit sink or scan uploads with a live clamd.
+os.environ["AUDIT_SHIP_FILE"] = ""
+os.environ["AUDIT_SHIP_URL"] = ""
+os.environ["AUDIT_ALERT_WEBHOOK"] = ""
+os.environ["CLAMAV_HOST"] = ""
+os.environ["VAULT_MASTER_KEY_COMMAND"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
