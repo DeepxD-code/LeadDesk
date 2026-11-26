@@ -8,11 +8,10 @@ import os
 import random
 
 import docx
-from docx.shared import Pt
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sample_data")
 SOP = os.path.join(ROOT, "sops")

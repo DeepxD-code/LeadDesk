@@ -20,5 +20,17 @@ dependencies = [
   "reportlab==5.0.1"
 ]
 
+[tool.ruff.lint]
+# Match ruff 0.17.6 defaults (pre-pyproject.toml behavior) so adding pyproject.toml
+# for Vercel does not flip ruff to ALL rules.
+select = [
+  "E902","F401","F402","F403","F404","F405","F406","F407","F501","F502",
+  "F503","F504","F505","F506","F507","F508","F509","F521","F522","F523",
+  "F524","F525","F541","F601","F602","F621","F622","F631","F632","F633",
+  "F634","F701","F702","F704","F706","F707","F722","F811","F821","F822",
+  "F823","F841","F842","F901","I001","I002","W191","W291","W292","W293",
+  "W505","W605"
+]
+
 [tool.vercel.scripts]
 build = ""

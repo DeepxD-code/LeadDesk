@@ -32,7 +32,19 @@ def _load_dotenv(path: str) -> None:
 
 _load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
-from . import crypto, forum, impact, interviews, leaves, llm, reports, security, sop, tasks, vault
+from . import (
+    crypto,
+    forum,
+    impact,
+    interviews,
+    leaves,
+    llm,
+    reports,
+    security,
+    sop,
+    tasks,
+    vault,
+)
 from .auth import COOKIE, current_user
 from .auth import router as auth_router
 from .db import TZ_NAME, init_db, now_s, q1
