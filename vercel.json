@@ -1,0 +1,17 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "leaddesk-demo"
+      }
+    }
+  ],
+  "services": {
+    "leaddesk-demo": {
+      "root": ".",
+      "framework": "fastapi"
+    }
+  }
+}

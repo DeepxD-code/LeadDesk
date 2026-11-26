@@ -53,7 +53,8 @@ async def lifespan(app: FastAPI):
             await asyncio.to_thread(ensure_forum_demo_users)
     sop.INDEX.rebuild()
     vault.load_text_index()
-    asyncio.create_task(_scheduler_loop())
+    if not (os.environ.get("VERCEL") or os.environ.get("DISABLE_SCHEDULER") == "1"):
+        asyncio.create_task(_scheduler_loop())
     log.info("LeadDesk ready. Time zone: %s. AI: %s", TZ_NAME, llm.status(force=True))
     _warn_if_public_demo()
     yield

@@ -5,7 +5,8 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
-DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
+_DEFAULT_DATA = "/tmp/leaddesk" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+DATA_DIR = os.environ.get("DATA_DIR", _DEFAULT_DATA)
 DB_PATH = os.path.join(DATA_DIR, "leaddesk.db")
 
 # The whole app works in Indian Standard Time (UTC+05:30, no daylight saving).
