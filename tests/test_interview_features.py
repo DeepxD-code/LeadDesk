@@ -129,3 +129,40 @@ def test_calendar_event_sync_creates_updates_and_cancels(monkeypatch):
     finally:
         db.ex("DELETE FROM interviews WHERE id=?", (interview_id,))
         db.ex("DELETE FROM candidates WHERE id=?", (candidate_id,))
+
+def test_creating_a_meeting_requires_a_connected_calendar(interviewer):
+    user_id = db.q1("SELECT id FROM users WHERE username='int1'")["id"]
+    db.ex("DELETE FROM google_calendar_connections WHERE user_id=?", (user_id,))
+    bad = interviewer.post("/api/iv/google/meeting", json={
+        "summary": "Ops sync", "start": "2026-11-27T16:00", "end": "2026-11-27T15:30"})
+    assert bad.status_code == 400
+    assert "End time" in bad.json()["detail"]
+    missing = interviewer.post("/api/iv/google/meeting", json={
+        "summary": "Ops sync", "start": "2026-11-27T16:00", "end": "2026-11-27T16:30"})
+    assert missing.status_code == 400
+    assert "Connect Google Calendar" in missing.json()["detail"]
+
+
+def test_creating_a_meeting_sends_one_google_event(interviewer, monkeypatch):
+    user_id = db.q1("SELECT id FROM users WHERE username='int1'")["id"]
+    monkeypatch.setattr(google_calendar, "has_connection", lambda _uid: True)
+    seen = {}
+
+    def fake_create(user_id_, summary, start, end, **kwargs):
+        seen.update({"user_id": user_id_, "summary": summary, "start": start, "end": end, **kwargs})
+        return {"ok": True, "demo": False, "id": "evt-1", "htmlLink": "https://calendar.test/evt-1"}
+
+    monkeypatch.setattr(google_calendar, "create_meeting", fake_create)
+    invalid = interviewer.post("/api/iv/google/meeting", json={
+        "summary": "Ops sync", "start": "2026-11-27T16:00", "end": "2026-11-27T16:30",
+        "attendees": "a@example.com, bad-email"})
+    assert invalid.status_code == 400
+    ok = interviewer.post("/api/iv/google/meeting", json={
+        "summary": "  Ops sync  ", "start": "2026-11-27T16:00", "end": "2026-11-27T16:30",
+        "attendees": "a@example.com, A@example.com", "location": "Room 2", "description": "Agenda"})
+    assert ok.status_code == 200
+    assert ok.json()["id"] == "evt-1"
+    assert seen["summary"] == "Ops sync"
+    assert seen["attendees"] == ["a@example.com"]
+    assert seen["location"] == "Room 2"
+    assert seen["user_id"] == user_id

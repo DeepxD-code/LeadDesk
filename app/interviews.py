@@ -1,6 +1,7 @@
 """Interview scheduler: availability, self-service booking links, .ics invites, reminders, structured feedback."""
 import io
 import os
+import re
 import secrets
 import threading
 import uuid
@@ -156,6 +157,15 @@ class SlotIn(BaseModel):
     interviewer_id: int | None = None           # recruiters/admin may add slots for an interviewer
 
 
+class MeetingIn(BaseModel):
+    summary: str = Field(min_length=1, max_length=200)
+    start: str                    # YYYY-MM-DDTHH:MM in IST
+    end: str                      # YYYY-MM-DDTHH:MM in IST
+    attendees: str = ""           # comma/space separated emails
+    description: str = Field("", max_length=2000)
+    location: str = Field("", max_length=300)
+
+
 @router.get("/slots")
 def my_slots(interviewer_id: int | None = None, user=Depends(current_user)):
     iid = interviewer_id if (interviewer_id and user["role"] in ("hr", "admin")) else user["id"]
@@ -212,6 +222,43 @@ def google_callback(state: str = "", code: str | None = None, error: str | None 
 def google_disconnect(user=Depends(require("interviewer"))):
     try:
         return google_calendar.disconnect(user["id"])
+    except google_calendar.GoogleCalendarError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@router.post("/google/meeting")
+def google_create_meeting(body: MeetingIn, user=Depends(require("interviewer"))):
+    """Create a one-off meeting on the signed-in interviewer's Google Calendar."""
+    summary = body.summary.strip()
+    if not summary:
+        raise HTTPException(400, "Give the meeting a title")
+    try:
+        start = datetime.fromisoformat(body.start)
+        end = datetime.fromisoformat(body.end)
+    except ValueError:
+        raise HTTPException(400, "Use a valid date and HH:MM times")
+    if end <= start:
+        raise HTTPException(400, "End time must be after start time")
+    if end - start > timedelta(hours=12):
+        raise HTTPException(400, "A single meeting cannot be longer than 12 hours")
+    if not google_calendar.has_connection(user["id"]):
+        raise HTTPException(400, "Connect Google Calendar before creating a meeting")
+    emails = []
+    for raw in re.split(r"[\s,;]+", body.attendees.strip()):
+        if not raw:
+            continue
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", raw):
+            raise HTTPException(400, f"{raw} is not a valid email address")
+        email = raw.lower()
+        if email not in emails:
+            emails.append(email)
+    if len(emails) > 20:
+        raise HTTPException(400, "Add at most 20 attendees")
+    try:
+        return google_calendar.create_meeting(
+            user["id"], summary, body.start, body.end,
+            description=body.description.strip(), location=body.location.strip(), attendees=emails,
+        )
     except google_calendar.GoogleCalendarError as exc:
         raise HTTPException(502, str(exc)) from exc
 

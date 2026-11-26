@@ -300,6 +300,35 @@ def busy_intervals(user_id, start, end):
         raise GoogleCalendarError("Google Calendar returned invalid availability data.") from exc
 
 
+def create_meeting(user_id, summary, start, end, *, description="", location="", attendees=None):
+    """Create a single event on the interviewer's primary calendar.
+
+    Returns the Google event id and link. Demo connections report success without
+    calling Google so the local demo keeps working offline.
+    """
+    if not has_connection(user_id):
+        raise GoogleCalendarError("Connect Google Calendar before creating a meeting.")
+    connection = q1("SELECT * FROM google_calendar_connections WHERE user_id=?", (user_id,))
+    if connection and _decode_tokens(connection).get("demo"):
+        return {"ok": True, "demo": True, "id": None, "htmlLink": None}
+    payload = {
+        "summary": summary,
+        "start": {"dateTime": _rfc3339(start), "timeZone": "Asia/Kolkata"},
+        "end": {"dateTime": _rfc3339(end), "timeZone": "Asia/Kolkata"},
+    }
+    if description:
+        payload["description"] = description
+    if location:
+        payload["location"] = location
+    emails = attendees or []
+    if emails:
+        payload["attendees"] = [{"email": email} for email in emails]
+    data = _api_request(user_id, "POST", "/calendars/primary/events",
+                        params={"sendUpdates": "all" if emails else "none"}, payload=payload)
+    return {"ok": True, "demo": False, "id": data.get("id"), "htmlLink": data.get("htmlLink"),
+            "start": start, "end": end, "attendees": emails}
+
+
 def _event_payload(interview):
     return {
         "summary": f"{interview['round_name']}: {interview['candidate_name']} | {interview['role_title']}",

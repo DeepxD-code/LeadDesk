@@ -1803,7 +1803,20 @@ VIEWS.availability = async (el) => {
     </div>
     ${calendar && calendar.connected
       ? html`<p class="small">Connected to ${calendar.calendar_label || "your primary calendar"}. Busy times are checked before candidates see slots, and confirmed interviews are synced here.</p>
-        <button class="btn sm" id="google-disconnect">Disconnect calendar</button>`
+        <div class="row"><button class="btn sm primary" id="new-meeting">+ New meeting</button><span class="grow"></span><button class="btn sm" id="google-disconnect">Disconnect calendar</button></div>
+        <form id="mf" class="stack" hidden style="margin-top:12px">
+          <div class="form-grid">
+            <label class="f">Title <input class="input" name="summary" required maxlength="200" placeholder="e.g. Ops sync"></label>
+            <label class="f">Date <input class="input" type="date" name="day" required value="${dateInput(tom)}"></label>
+            <label class="f">From <input class="input" type="time" name="start_time" required value="15:00"></label>
+            <label class="f">To <input class="input" type="time" name="end_time" required value="15:30"></label>
+            <label class="f">Attendees (optional, emails) <input class="input" name="attendees" placeholder="name@example.com, other@example.com"></label>
+            <label class="f">Location <input class="input" name="location" placeholder="Google Meet, room, or blank"></label>
+          </div>
+          <label class="f">Notes <textarea class="input" name="description" rows="2" maxlength="2000"></textarea></label>
+          <div class="row"><span class="grow"></span><button class="btn sm primary" id="mcreate">Create in Google Calendar</button></div>
+        </form>
+        <div id="mresult" class="small"></div>`
       : calendar && calendar.configured
         ? html`<p class="small">Connect your own calendar to hide busy times and sync interview invitations, changes, and cancellations.</p>
           <a class="btn sm primary" href="/api/iv/google/connect">Connect Google Calendar</a>`
@@ -1838,6 +1851,35 @@ VIEWS.availability = async (el) => {
       route();
     } catch (e) { disconnect.disabled = false; fail(e); }
   };
+  const newMeeting = $("#new-meeting", el);
+  const meetingForm = $("#mf", el);
+  if (newMeeting && meetingForm) {
+    newMeeting.onclick = () => {
+      meetingForm.hidden = !meetingForm.hidden;
+      if (!meetingForm.hidden) meetingForm.querySelector('[name="summary"]').focus();
+    };
+    meetingForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const f = Object.fromEntries(new FormData(e.target));
+      const btn = $("#mcreate", el);
+      btn.disabled = true;
+      try {
+        const r = await api("/api/iv/google/meeting", { method: "POST", body: {
+          summary: f.summary,
+          start: `${f.day}T${f.start_time}`,
+          end: `${f.day}T${f.end_time}`,
+          attendees: f.attendees || "",
+          description: f.description || "",
+          location: f.location || "",
+        } });
+        toast(r.demo ? "Demo calendar: meeting not sent to Google" : "Meeting created on Google Calendar", "ok");
+        const box = $("#mresult", el);
+        box.innerHTML = r.htmlLink ? html`<a href="${r.htmlLink}" target="_blank" rel="noopener">Open in Google Calendar →</a>`.s : "";
+        e.target.reset();
+      } catch (er) { fail(er); }
+      btn.disabled = false;
+    };
+  }
 };
 
 // ------------------------------------------------------------------ proof
