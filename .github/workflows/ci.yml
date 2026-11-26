@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Same OCR engine the Dockerfile installs; seeding the demo vault runs scans through it.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
       - run: python -m pip install -r requirements.txt pytest
       - run: python -m pytest tests/ -q
 
